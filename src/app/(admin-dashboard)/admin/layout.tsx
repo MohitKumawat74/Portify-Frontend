@@ -1,11 +1,11 @@
 import { DashboardSidebar } from '@/components/dashboard/DashboardSidebar';
 import { TopNavbar } from '@/components/dashboard/TopNavbar';
-import { AuthGuard } from '@/components/dashboard/AuthGuard';
+import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { APP_NAME } from '@/utils/constants';
 
 export default function AdminDashboardLayout({ children }: { children: React.ReactNode }) {
   return (
-    <AuthGuard requireAdmin>
+    <ProtectedRoute requireAdmin>
       <div className="flex h-screen overflow-hidden bg-[var(--color-bg)]">
         <DashboardSidebar title={`${APP_NAME} Admin`} variant="admin" />
         <div className="flex flex-1 flex-col overflow-hidden">
@@ -15,6 +15,6 @@ export default function AdminDashboardLayout({ children }: { children: React.Rea
           </main>
         </div>
       </div>
-    </AuthGuard>
+    </ProtectedRoute>
   );
 }

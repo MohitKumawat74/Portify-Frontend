@@ -9,13 +9,27 @@ import { ROUTES } from '@/utils/constants';
 
 export function useAuth() {
   const router = useRouter();
-  const { user, token, refreshToken, isAuthenticated, setUser, clearAuth, updateUser, setToken } =
+  const {
+    user,
+    token,
+    refreshToken,
+    isAuthenticated,
+    isAuthLoading,
+    setUser,
+    clearAuth,
+    updateUser,
+    setToken,
+    bootstrapAuth,
+  } =
     useAuthStore();
 
   const login = useCallback(
     async (payload: LoginPayload) => {
       const response = await authService.login(payload);
       if (response.success) {
+        if (!response.data?.token || !response.data?.refreshToken) {
+          throw new Error('Invalid authentication response from server.');
+        }
         setUser(response.data.user, response.data.token, response.data.refreshToken);
         router.push(
           response.data.user.role === 'admin' ? ROUTES.ADMIN : ROUTES.DASHBOARD,
@@ -30,6 +44,9 @@ export function useAuth() {
     async (payload: RegisterPayload) => {
       const response = await authService.register(payload);
       if (response.success) {
+        if (!response.data?.token || !response.data?.refreshToken) {
+          throw new Error('Invalid authentication response from server.');
+        }
         setUser(response.data.user, response.data.token, response.data.refreshToken);
         router.push(ROUTES.DASHBOARD);
       }
@@ -75,6 +92,7 @@ export function useAuth() {
     token,
     refreshToken,
     isAuthenticated,
+    isAuthLoading,
     login,
     register,
     logout,
@@ -82,5 +100,6 @@ export function useAuth() {
     forgotPassword,
     resetPassword,
     refreshAccessToken,
+    initializeAuth: bootstrapAuth,
   };
 }

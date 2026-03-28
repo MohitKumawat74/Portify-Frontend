@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/authStore';
 
@@ -16,10 +16,11 @@ interface AuthGuardProps {
  */
 export function AuthGuard({ children, requireAdmin = false }: AuthGuardProps) {
   const router = useRouter();
-  const { isAuthenticated, user } = useAuthStore();
-  const [ready, setReady] = useState(false);
+  const { isAuthenticated, user, isAuthLoading } = useAuthStore();
 
   useEffect(() => {
+    if (isAuthLoading) return;
+
     if (!isAuthenticated) {
       router.replace('/login');
       return;
@@ -28,8 +29,9 @@ export function AuthGuard({ children, requireAdmin = false }: AuthGuardProps) {
       router.replace('/dashboard');
       return;
     }
-    setReady(true);
-  }, [isAuthenticated, user, requireAdmin, router]);
+  }, [isAuthenticated, user, requireAdmin, router, isAuthLoading]);
+
+  const ready = !isAuthLoading && isAuthenticated && (!requireAdmin || user?.role === 'admin');
 
   if (!ready) {
     return (

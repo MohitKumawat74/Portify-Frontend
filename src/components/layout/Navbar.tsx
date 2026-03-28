@@ -44,17 +44,17 @@ export function Navbar() {
   return (
     <motion.header
       className={cn(
-        'fixed inset-x-0 top-0 z-50 transition-all duration-300',
+        'fixed inset-x-0 top-0 z-50 border-b border-white/6 bg-(--color-bg)/55 backdrop-blur-xl transition-all duration-300',
         scrolled
-          ? 'border-b border-white/10 bg-[var(--color-bg)]/85 shadow-lg backdrop-blur-xl'
-          : 'bg-transparent',
+          ? 'border-b border-white/10 bg-(--color-bg)/85 shadow-lg backdrop-blur-xl'
+          : 'shadow-[0_1px_0_rgba(255,255,255,0.04)]',
       )}
       initial={{ y: -80, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
       transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
     >
       <Container maxWidth="2xl">
-        <nav className="flex h-16 items-center justify-between sm:h-[70px]">
+        <nav className="flex h-16 items-center justify-between sm:h-17.5">
           {/* Logo */}
           <Link
             href={ROUTES.HOME}
@@ -76,7 +76,7 @@ export function Navbar() {
                     'relative rounded-lg px-3 py-2 text-sm font-medium transition-all duration-200',
                     active
                       ? 'text-white bg-white/10'
-                      : 'text-[var(--color-text-muted)] hover:text-white hover:bg-white/5',
+                      : 'text-(--color-text-muted) hover:text-white hover:bg-white/5',
                   )}
                 >
                   {link.label}
@@ -98,7 +98,7 @@ export function Navbar() {
               <>
                 <Link
                   href={user?.role === 'admin' ? ROUTES.ADMIN : ROUTES.DASHBOARD}
-                  className="text-sm font-medium text-[var(--color-text-muted)] hover:text-white transition-colors"
+                  className="text-sm font-medium text-(--color-text-muted) hover:text-white transition-colors"
                 >
                   Dashboard
                 </Link>
@@ -143,7 +143,7 @@ export function Navbar() {
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             transition={{ duration: 0.25 }}
-            className="overflow-hidden border-t border-white/10 bg-[var(--color-bg)]/95 backdrop-blur-xl lg:hidden"
+            className="overflow-hidden border-t border-white/10 bg-(--color-bg)/95 backdrop-blur-xl lg:hidden"
             id="mobile-main-menu"
           >
             <Container maxWidth="2xl">
@@ -158,7 +158,7 @@ export function Navbar() {
                         'rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
                         pathname === link.href
                           ? 'bg-white/10 text-white'
-                          : 'text-[var(--color-text-muted)] hover:bg-white/5 hover:text-white',
+                          : 'text-(--color-text-muted) hover:bg-white/5 hover:text-white',
                       )}
                     >
                       {link.label}
@@ -171,7 +171,7 @@ export function Navbar() {
                       <Link
                         href={user?.role === 'admin' ? ROUTES.ADMIN : ROUTES.DASHBOARD}
                         onClick={() => setMobileOpen(false)}
-                        className="rounded-lg px-3 py-2 text-sm font-medium text-[var(--color-text-muted)] hover:bg-white/5 hover:text-white"
+                        className="rounded-lg px-3 py-2 text-sm font-medium text-(--color-text-muted) hover:bg-white/5 hover:text-white"
                       >
                         Dashboard
                       </Link>

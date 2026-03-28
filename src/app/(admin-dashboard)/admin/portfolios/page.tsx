@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/Button';
 import { DashboardCard, PageHeader } from '@/components/dashboard/DashboardCard';
 import { Modal } from '@/components/ui/Modal';
+import { EmptyState } from '@/components/ui/EmptyState';
 import { portfolioService } from '@/services/portfolioService';
 import { useAuthStore } from '@/store/authStore';
 import { toast } from '@/store/toastStore';
@@ -114,10 +115,11 @@ export default function AdminPortfoliosPage() {
             ))}
           </div>
         ) : filtered.length === 0 ? (
-          <div className="py-12 text-center">
-            <FolderOpen size={40} className="mx-auto mb-3 text-[var(--color-text-muted)]" />
-            <p className="text-sm text-[var(--color-text-muted)]">No portfolios found.</p>
-          </div>
+          <EmptyState
+            icon={FolderOpen}
+            title="No portfolios found"
+            description="Try changing your search query or check back later."
+          />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">

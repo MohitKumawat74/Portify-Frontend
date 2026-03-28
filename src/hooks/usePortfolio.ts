@@ -53,6 +53,21 @@ export function usePortfolio() {
       const response = await portfolioService.create(payload, token);
       if (response.success) {
         addPortfolio(response.data);
+        const usage = useAuthStore.getState().usageStats;
+        if (usage) {
+          const nextUsed = usage.portfolioUsage.used + 1;
+          const limit = usage.portfolioUsage.limit;
+          const nextPct = limit ? Math.min(100, Math.round((nextUsed / Math.max(1, limit)) * 100)) : 0;
+          useAuthStore.getState().setPlanUsage({
+            ...usage,
+            portfolioUsage: {
+              ...usage.portfolioUsage,
+              used: nextUsed,
+              remaining: limit === null ? null : Math.max(0, limit - nextUsed),
+              percentage: nextPct,
+            },
+          });
+        }
       }
       return response.data;
     },
@@ -76,6 +91,21 @@ export function usePortfolio() {
       if (!token) return;
       await portfolioService.delete(id, token);
       removePortfolio(id);
+      const usage = useAuthStore.getState().usageStats;
+      if (usage) {
+        const nextUsed = Math.max(0, usage.portfolioUsage.used - 1);
+        const limit = usage.portfolioUsage.limit;
+        const nextPct = limit ? Math.min(100, Math.round((nextUsed / Math.max(1, limit)) * 100)) : 0;
+        useAuthStore.getState().setPlanUsage({
+          ...usage,
+          portfolioUsage: {
+            ...usage.portfolioUsage,
+            used: nextUsed,
+            remaining: limit === null ? null : Math.max(0, limit - nextUsed),
+            percentage: nextPct,
+          },
+        });
+      }
     },
     [token, removePortfolio],
   );

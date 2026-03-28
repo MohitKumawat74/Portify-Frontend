@@ -12,9 +12,20 @@ export interface CancelSubscriptionResponse {
   currentPeriodEnd: string;
 }
 
+export interface UpgradePlanResponse {
+  planId: string;
+  planName: string;
+  status: string;
+  currentPeriodStart?: string | null;
+  currentPeriodEnd?: string | null;
+}
+
 export const planService = {
   getPlans: () =>
     api.get<ApiResponse<Plan[]>>('/plans'),
+
+  upgradeToPro: (token: string) =>
+    api.post<ApiResponse<UpgradePlanResponse>>('/plan/upgrade', {}, token),
 
   createCheckout: (payload: CheckoutPayload, token: string) =>
     api.post<ApiResponse<CheckoutSession>>('/subscriptions/checkout', payload, token),

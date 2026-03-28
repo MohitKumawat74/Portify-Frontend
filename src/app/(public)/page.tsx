@@ -2,6 +2,7 @@
 
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { motion, useScroll, useTransform } from 'framer-motion';
 import { Suspense, useEffect, useRef, useState } from 'react';
 import {
@@ -15,11 +16,10 @@ import { Container } from '@/components/layout/Container';
 import { SkeletonBox } from '@/components/ui/Loader';
 import { CountUp } from '@/components/ui/CountUp';
 import { ScrollProgress } from '@/components/ui/ScrollProgress';
-import { AnimatedSection, StaggerContainer, staggerItem } from '@/components/motion/AnimatedSection';
-import { SplitText, RevealText, GradientText } from '@/components/motion/TextReveal';
+import { AnimatedSection } from '@/components/motion/AnimatedSection';
+import { RevealText, GradientText } from '@/components/motion/TextReveal';
 import { MagneticButton } from '@/components/motion/MagneticButton';
 import StackingCards from '@/components/motion/StackingCards';
-import { PageLoader } from '@/components/ui/PageLoader';
 import { ROUTES } from '@/utils/constants';
 
 // Lazy-loaded heavy components
@@ -232,9 +232,14 @@ function ScrollToTop() {
 
 // PAGE
 export default function HomePage() {
+  const pathname = usePathname();
   const { scrollYProgress } = useScroll();
-  const heroOpacity = useTransform(scrollYProgress, [0, 0.5], [1, 0]);
-  const heroScale = useTransform(scrollYProgress, [0, 0.5], [1, 0.8]);
+  const heroOpacity = useTransform(scrollYProgress, [0, 0.4], [1, 0.72]);
+  const heroScale = useTransform(scrollYProgress, [0, 0.4], [1, 0.94]);
+  const heroSectionRef = useRef<HTMLElement>(null);
+  const heroCopyRef = useRef<HTMLDivElement>(null);
+  const heroVisualRef = useRef<HTMLDivElement>(null);
+  const scrollIndicatorRef = useRef<HTMLButtonElement>(null);
 
   // How It Works — horizontal scroll-trigger
   const howItWorksRef = useRef<HTMLElement>(null);
@@ -247,21 +252,186 @@ export default function HomePage() {
   const stepsOpacity = useTransform(howProgress, [0, 0.45], [0, 1]);
   const lineScaleX   = useTransform(howProgress, [0.15, 0.9], [0, 1]);
 
+  useEffect(() => {
+    if (pathname !== ROUTES.HOME) {
+      return;
+    }
+    const frame = window.requestAnimationFrame(() => {
+      window.dispatchEvent(new Event('resize'));
+
+      if (heroVisualRef.current) {
+        heroVisualRef.current.style.opacity = '1';
+      }
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [pathname]);
+
+  useEffect(() => {
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reducedMotion) {
+      return undefined;
+    }
+
+    let mounted = true;
+    let cleanup: (() => void) | undefined;
+
+    Promise.all([import('gsap'), import('gsap/ScrollTrigger')]).then(([{ gsap }, { ScrollTrigger }]) => {
+      if (!mounted || !heroSectionRef.current) {
+        return;
+      }
+
+      gsap.registerPlugin(ScrollTrigger);
+
+      const ctx = gsap.context(() => {
+        gsap.set('[data-hero-line]', { yPercent: 110, opacity: 0 });
+
+        const introTimeline = gsap.timeline({ defaults: { ease: 'power3.out' } });
+        introTimeline
+          .from('[data-hero-pill]', { y: 16, opacity: 0, duration: 0.45 })
+          .to('[data-hero-line]', { yPercent: 0, opacity: 1, duration: 0.72, stagger: 0.12 }, '-=0.2')
+          .from('[data-hero-copy]', { y: 18, opacity: 0, duration: 0.55 }, '-=0.5')
+          .from('[data-hero-cta] > *', { y: 16, opacity: 0, duration: 0.5, stagger: 0.1 }, '-=0.35')
+          .from('[data-hero-points] > *', { y: 14, opacity: 0, duration: 0.45, stagger: 0.08 }, '-=0.28')
+          .from('[data-hero-proof]', { y: 12, opacity: 0, duration: 0.45 }, '-=0.2')
+          .fromTo(heroVisualRef.current, { y: 24, scale: 0.94 }, { y: 0, scale: 1, duration: 0.85, clearProps: 'opacity' }, '-=0.58');
+
+        gsap.to(heroCopyRef.current, {
+          yPercent: -5,
+          ease: 'none',
+          scrollTrigger: {
+            trigger: heroSectionRef.current,
+            start: 'top top',
+            end: 'bottom top',
+            scrub: true,
+          },
+        });
+
+        gsap.to(heroVisualRef.current, {
+          yPercent: -10,
+          ease: 'none',
+          scrollTrigger: {
+            trigger: heroSectionRef.current,
+            start: 'top top',
+            end: 'bottom top',
+            scrub: true,
+          },
+        });
+
+        gsap.to('[data-hero-glow-left]', {
+          yPercent: 14,
+          xPercent: -4,
+          ease: 'none',
+          scrollTrigger: {
+            trigger: heroSectionRef.current,
+            start: 'top top',
+            end: 'bottom top',
+            scrub: true,
+          },
+        });
+
+        gsap.to('[data-hero-glow-right]', {
+          yPercent: -10,
+          xPercent: 5,
+          ease: 'none',
+          scrollTrigger: {
+            trigger: heroSectionRef.current,
+            start: 'top top',
+            end: 'bottom top',
+            scrub: true,
+          },
+        });
+
+        gsap.to(scrollIndicatorRef.current, {
+          opacity: 0,
+          y: -16,
+          scrollTrigger: {
+            trigger: heroSectionRef.current,
+            start: 'top top',
+            end: '45% top',
+            scrub: true,
+          },
+        });
+
+        gsap.to(scrollIndicatorRef.current, {
+          y: 8,
+          repeat: -1,
+          yoyo: true,
+          ease: 'sine.inOut',
+          duration: 1.2,
+        });
+      }, heroSectionRef);
+
+      // Tech marquee zoom-up on scroll (separate context because it's outside the hero section)
+      let marqueeCtx: { revert?: () => void } | undefined;
+      try {
+        marqueeCtx = gsap.context(() => {
+          gsap.fromTo('[data-tech-zoom]',
+            { y: 24, scale: 0.96, opacity: 0 },
+            {
+              y: 0,
+              scale: 1,
+              opacity: 1,
+              ease: 'power3.out',
+              scrollTrigger: {
+                trigger: '#tech-marquee',
+                start: 'top 80%',
+                end: 'top 50%',
+                scrub: true,
+              },
+            },
+          );
+        }, document);
+      } catch {
+        // fail silently if document isn't ready or selector not found
+      }
+
+      cleanup = () => {
+        ctx.revert();
+        marqueeCtx?.revert?.();
+      };
+    });
+
+    return () => {
+      mounted = false;
+      cleanup?.();
+    };
+  }, []);
+
+  const scrollToNextSection = () => {
+    const nextSection = document.getElementById('tech-marquee');
+    if (!nextSection) {
+      return;
+    }
+
+    const globalWindow = window as Window & {
+      __lenis?: {
+        scrollTo: (target: Element | string | number, options?: { offset?: number; duration?: number }) => void;
+      };
+    };
+
+    if (globalWindow.__lenis) {
+      globalWindow.__lenis.scrollTo(nextSection, { offset: -72, duration: 1.05 });
+      return;
+    }
+
+    nextSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
   return (
     <>
-      <PageLoader />
       <ParticlesBackground />
       <ScrollProgress />
       <Navbar />
       <ScrollToTop />
 
       <main className="relative z-10">
-        {/* 1. HERO — sticky so subsequent sections slide over it */}
-        <section className="sticky top-0 z-[1] relative min-h-screen flex items-center overflow-hidden pt-16 sm:pt-20">
+        {/* 1. HERO */}
+        <section ref={heroSectionRef} className="relative z-[1] min-h-screen flex items-center overflow-hidden pt-24 sm:pt-28 md:pt-32 pb-10 sm:pb-14">
           {/* Ambient BG */}
           <div className="pointer-events-none absolute inset-0">
-            <div className="absolute -top-40 -left-32 h-[400px] w-[400px] sm:h-[600px] sm:w-[600px] md:h-[700px] md:w-[700px] rounded-full bg-[var(--color-primary)] opacity-[0.07] blur-[80px] sm:blur-[100px] md:blur-[130px]" />
-            <div className="absolute -bottom-20 -right-32 h-[300px] w-[300px] sm:h-[500px] sm:w-[500px] md:h-[600px] md:w-[600px] rounded-full bg-[var(--color-secondary)] opacity-[0.06] blur-[80px] sm:blur-[100px] md:blur-[130px]" />
+            <div data-hero-glow-left className="absolute -top-40 -left-32 h-[400px] w-[400px] sm:h-[600px] sm:w-[600px] md:h-[700px] md:w-[700px] rounded-full bg-[var(--color-primary)] opacity-[0.07] blur-[80px] sm:blur-[100px] md:blur-[130px]" />
+            <div data-hero-glow-right className="absolute -bottom-20 -right-32 h-[300px] w-[300px] sm:h-[500px] sm:w-[500px] md:h-[600px] md:w-[600px] rounded-full bg-[var(--color-secondary)] opacity-[0.06] blur-[80px] sm:blur-[100px] md:blur-[130px]" />
             {/* Subtle grid */}
             <div
               className="absolute inset-0 opacity-[0.015] sm:opacity-[0.02]"
@@ -272,68 +442,48 @@ export default function HomePage() {
             />
           </div>
 
-          <Container className="relative z-10 py-16 sm:py-20 md:py-24 lg:py-32 ">
+          <Container className="relative z-10 py-10 sm:py-12 md:py-16 lg:py-20">
             <motion.div 
               style={{ opacity: heroOpacity, scale: heroScale }}
-              className="grid grid-cols-1 items-center gap-8 sm:gap-10 md:gap-12 lg:grid-cols-2"
+              className="grid grid-cols-1 items-center gap-10 sm:gap-12 md:gap-14 lg:grid-cols-2"
             >
               {/* Copy */}
-              <div>
-                <motion.div
-                  initial={{ opacity: 0, y: 16 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.5 }}
-                >
-                  <span className="mb-4 sm:mb-6 inline-flex items-center gap-2 rounded-full border border-[var(--color-primary)]/30 bg-[var(--color-primary)]/10 px-3 sm:px-4 py-1 sm:py-1.5 text-xs sm:text-sm font-medium text-[var(--color-primary)]">
+              <div ref={heroCopyRef}>
+                <div data-hero-pill>
+                  <span className="mb-5 sm:mb-6 inline-flex items-center gap-2 rounded-full border border-[var(--color-primary)]/30 bg-[var(--color-primary)]/10 px-3 sm:px-4 py-1 sm:py-1.5 text-xs sm:text-sm font-medium text-[var(--color-primary)]">
                     <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--color-primary)]" />
                     Now in public beta — free forever
                   </span>
-                </motion.div>
+                </div>
 
                 {/* Staggered headline */}
-                <h1 className="font-space-grotesk mb-4 sm:mb-6 tracking-tight">
+                <h1 className="font-space-grotesk mb-5 sm:mb-7 tracking-tight">
                   {[
-                    { text: 'Build a portfolio', gradient: false },
-                    { text: 'that gets', gradient: false },
+                    { text: 'Build and showcase', gradient: false },
+                    { text: 'your portfolio', gradient: false },
                   ].map(({ text }, i) => (
                     <div key={i} className="overflow-hidden">
-                      <motion.span
+                      <span
+                        data-hero-line
                         className="block text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-extrabold leading-tight text-white"
-                        initial={{ y: '110%', opacity: 0 }}
-                        animate={{ y: 0, opacity: 1 }}
-                        transition={{ duration: 0.7, delay: 0.2 + i * 0.11, ease: [0.22, 1, 0.36, 1] }}
                       >
                         {text}
-                      </motion.span>
+                      </span>
                     </div>
                   ))}
-                  <div className="overflow-hidden">
-                    <motion.div
-                      initial={{ y: '110%', opacity: 0 }}
-                      animate={{ y: 0, opacity: 1 }}
-                      transition={{ duration: 0.7, delay: 0.42, ease: [0.22, 1, 0.36, 1] }}
-                    >
-                      <GradientText
-                        className="block text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-extrabold leading-tight"
-                        duration={5}
-                      >
-                        you hired.
-                      </GradientText>
-                    </motion.div>
-                  </div>
+               
                 </h1>
 
-                <motion.p
-                  className="mb-6 sm:mb-8 max-w-[480px] text-base sm:text-lg leading-relaxed text-[var(--color-text-muted)]"
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.6, delay: 0.65 }}
+                <p
+                  data-hero-copy
+                  className="mb-7 sm:mb-9 max-w-[540px] text-base sm:text-lg leading-relaxed text-[var(--color-text-muted)]"
                 >
-                  Create a stunning developer portfolio with 3D animations, custom themes,
-                  and real-time previews. No design skills needed — up in under 2 minutes.
-                </motion.p>
+                  Turn your projects into a premium digital presence with cinematic visuals,
+                  elegant templates, and instant publishing built for developers and creatives.
+                </p>
 
                 <motion.div
+                  data-hero-cta
                   className="flex flex-wrap gap-3 sm:gap-4"
                   initial={{ opacity: 0, y: 16 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -344,7 +494,7 @@ export default function HomePage() {
                       className="inline-flex items-center gap-2 rounded-xl bg-linear-to-r from-(--color-primary) to-violet-500 px-5 sm:px-6 py-2.5 sm:py-3 text-sm sm:text-base font-semibold text-white shadow-lg shadow-(--color-primary)/30 hover:shadow-(--color-primary)/50 transition-shadow duration-300"
                       glowColor="rgba(124,58,237,0.45)"
                     >
-                      Start building free
+                      Get Started
                       <ArrowRight className="h-4 w-4 sm:h-5 sm:w-5" />
                     </MagneticButton>
                   </Link>
@@ -356,8 +506,17 @@ export default function HomePage() {
                   </Link>
                 </motion.div>
 
+                <div data-hero-points className="mt-5 sm:mt-6 grid grid-cols-1 gap-2.5 sm:grid-cols-3 sm:gap-3">
+                  {['Interactive 3D hero', 'One-click publishing', 'Recruiter-ready templates'].map((point) => (
+                    <div key={point} className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-[11px] sm:text-xs font-medium text-white/80 backdrop-blur-sm">
+                      {point}
+                    </div>
+                  ))}
+                </div>
+
                 {/* Social proof row */}
                 <motion.div
+                  data-hero-proof
                   className="mt-8 sm:mt-10 md:mt-12 flex flex-wrap items-center gap-4 sm:gap-5"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
@@ -388,16 +547,19 @@ export default function HomePage() {
               </div>
 
               {/* 3D visual */}
-              <motion.div
-                className="relative h-[280px] sm:h-[340px] md:h-[420px] lg:h-[560px]"
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ duration: 0.9, delay: 0.3 }}
+              <div
+                ref={heroVisualRef}
+                className="relative h-[300px] sm:h-[360px] md:h-[450px] lg:h-[560px]"
               >
-                <div className="absolute inset-0 overflow-hidden rounded-2xl sm:rounded-3xl border border-white/[0.08] bg-white/[0.02]">
+                <div className="absolute -inset-2 rounded-[1.9rem] bg-gradient-to-br from-[var(--color-primary)]/20 via-transparent to-[var(--color-secondary)]/20 blur-2xl opacity-75" />
+                <div className="absolute inset-0 overflow-hidden rounded-2xl sm:rounded-3xl border border-white/[0.12] bg-white/[0.03] shadow-[0_24px_60px_-24px_rgba(124,58,237,0.45)]">
                   <Suspense fallback={<SkeletonBox className="h-full w-full" />}>
                     <HeroScene />
                   </Suspense>
+                </div>
+                <div className="absolute bottom-3 left-3 right-3 hidden sm:flex items-center justify-between rounded-xl border border-white/12 bg-black/25 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-white/70 backdrop-blur-md">
+                  <span>Portfolio Canvas</span>
+                  <span className="text-emerald-300">Live</span>
                 </div>
                 {/* Floating chips */}
                 <motion.div
@@ -405,38 +567,41 @@ export default function HomePage() {
                   transition={{ repeat: Infinity, duration: 3, ease: 'easeInOut' }}
                   className="absolute -left-2 sm:-left-4 top-8 sm:top-10 hidden sm:flex items-center gap-2 rounded-xl border border-white/10 bg-[var(--color-bg-glass)] px-2 sm:px-3 py-1.5 sm:py-2 text-[10px] sm:text-xs font-semibold text-white backdrop-blur-md"
                 >
-                  <Zap className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-yellow-400" /> &lt;200ms load
+                  <Zap className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-yellow-400" /> Live preview engine
                 </motion.div>
                 <motion.div
                   animate={{ y: [0, 6, 0] }}
                   transition={{ repeat: Infinity, duration: 3.5, ease: 'easeInOut', delay: 0.5 }}
                   className="absolute -right-2 sm:-right-4 bottom-12 sm:bottom-16 hidden sm:flex items-center gap-2 rounded-xl border border-white/10 bg-[var(--color-bg-glass)] px-2 sm:px-3 py-1.5 sm:py-2 text-[10px] sm:text-xs font-semibold text-white backdrop-blur-md"
                 >
-                  <CheckCircle className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-emerald-400" /> 98% hired
+                  <CheckCircle className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-emerald-400" /> Portfolio-ready in minutes
                 </motion.div>
-              </motion.div>
+              </div>
             </motion.div>
           </Container>
 
           {/* Scroll caret */}
-          <motion.div
+          <motion.button
+            ref={scrollIndicatorRef}
+            onClick={scrollToNextSection}
             className="absolute bottom-4 sm:bottom-6 md:bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-1 sm:gap-1.5"
             animate={{ y: [0, 6, 0] }}
             transition={{ repeat: Infinity, duration: 2 }}
+            aria-label="Scroll to next section"
           >
-            <span className="text-[8px] sm:text-[9px] uppercase tracking-[0.3em] text-white/25">scroll</span>
+            <span className="text-[8px] sm:text-[9px] uppercase tracking-[0.3em] text-white/25">Scroll to explore</span>
             <div className="flex h-6 w-4 sm:h-7 sm:w-4 md:h-8 md:w-5 items-start justify-center rounded-full border border-white/20 pt-1 sm:pt-1.5">
               <div className="h-1 sm:h-1.5 w-0.5 sm:w-1 rounded-full bg-white/40" />
             </div>
-          </motion.div>
+          </motion.button>
         </section>
 
         {/* ↓ All sections below have z-[10] + solid bg so they slide over the sticky hero */}
         <div className="relative z-[10]" style={{ background: 'var(--color-bg)' }}>
 
         {/* 2. TECH MARQUEE */}
-        <div className="relative z-10 overflow-hidden border-y border-white/[0.06] bg-white/[0.015] py-4 sm:py-5 md:py-6">
-          <p className="mb-2 sm:mb-3 md:mb-4 text-center text-[8px] sm:text-[9px] md:text-[10px] uppercase tracking-[0.3em] text-white/25">
+        <div id="tech-marquee" className="relative z-10 overflow-hidden border-y border-white/[0.06] bg-white/[0.015] py-4 sm:py-5 md:py-6">
+          <p data-tech-zoom className="mb-2 sm:mb-3 md:mb-4 text-center text-[8px] sm:text-[9px] md:text-[10px] uppercase tracking-[0.3em] text-white/25">
             Built for developers working with
           </p>
           <div className="flex animate-marquee gap-8 sm:gap-10 md:gap-12 whitespace-nowrap">

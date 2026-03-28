@@ -2,6 +2,8 @@ import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import '@/styles/globals.css';
 import { Toaster } from '@/components/ui/Toaster';
+import { AuthBootstrap } from '@/components/auth/AuthBootstrap';
+import { AppShell } from '@/components/layout/AppShell';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -33,7 +35,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
       </head>
       <body className="antialiased" suppressHydrationWarning>
-        {children}
+        <AuthBootstrap />
+        <AppShell>{children}</AppShell>
         <Toaster />
       </body>
     </html>

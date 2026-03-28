@@ -7,6 +7,8 @@ import { Footer } from '@/components/layout/Footer';
 import { Container } from '@/components/layout/Container';
 import Link from 'next/link';
 import { Button } from '@/components/ui/Button';
+import { UpgradeModal } from '@/components/dashboard/UpgradeModal';
+import { useAuthStore } from '@/store/authStore';
 import { ROUTES } from '@/utils/constants';
 import { CheckCircle, Zap, Sparkles } from 'lucide-react';
 
@@ -76,8 +78,51 @@ const FAQ = [
 export default function PricingPage() {
   const [annual, setAnnual] = useState(false);
   const [openFaq, setOpenFaq] = useState<number | null>(null);
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
+  const { isAuthenticated, planId } = useAuthStore();
 
   const getPrice = (base: number) => (base === 0 ? 0 : annual ? Math.round(base * 0.8) : base);
+  const isOnProPlan = planId === 'plan_pro' || planId === 'plan_team';
+
+  const renderCta = (plan: (typeof PLANS)[number]) => {
+    const isProPlanCard = plan.name === 'Pro';
+
+    if (!isProPlanCard) {
+      return (
+        <Link href={plan.cta.href}>
+          <Button variant={plan.cta.variant} size="lg" className="w-full">
+            {plan.cta.label}
+          </Button>
+        </Link>
+      );
+    }
+
+    if (!isAuthenticated) {
+      return (
+        <Link href={ROUTES.LOGIN}>
+          <Button variant={plan.cta.variant} size="lg" className="w-full">
+            Log in to upgrade
+          </Button>
+        </Link>
+      );
+    }
+
+    if (isOnProPlan) {
+      return (
+        <Link href={ROUTES.DASHBOARD}>
+          <Button variant="outline" size="lg" className="w-full">
+            You are on Pro
+          </Button>
+        </Link>
+      );
+    }
+
+    return (
+      <Button variant="glow" size="lg" className="w-full" onClick={() => setUpgradeOpen(true)}>
+        Upgrade to Pro
+      </Button>
+    );
+  };
 
   return (
     <>
@@ -205,11 +250,7 @@ export default function PricingPage() {
                       </li>
                     ))}
                   </ul>
-                  <Link href={plan.cta.href}>
-                    <Button variant={plan.cta.variant} size="lg" className="w-full">
-                      {plan.cta.label}
-                    </Button>
-                  </Link>
+                  {renderCta(plan)}
                 </motion.div>
               ))}
             </div>
@@ -285,6 +326,10 @@ export default function PricingPage() {
         </section>
       </main>
       <Footer />
+      <UpgradeModal
+        isOpen={upgradeOpen}
+        onClose={() => setUpgradeOpen(false)}
+      />
     </>
   );
 }

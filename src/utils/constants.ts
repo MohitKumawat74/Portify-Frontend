@@ -5,7 +5,23 @@ export const API_BASE_URL = (() => {
     if (cleaned.endsWith('/api')) return cleaned;
     return `${cleaned}/api`;
   }
-  return process.env.NODE_ENV === 'production' ? 'http://localhost:5000/api' : '/api';
+
+  if (typeof window !== 'undefined') {
+    const { protocol, hostname } = window.location;
+
+    // Support dev tunnels like <name>-3001.... -> <name>-5000....
+    if (/\-\d+(?=\.)/.test(hostname)) {
+      const backendHost = hostname.replace(/\-\d+(?=\.)/, '-5000');
+      return `${protocol}//${backendHost}/api`;
+    }
+
+    // Local development fallback.
+    if (hostname === 'localhost' || hostname === '127.0.0.1') {
+      return `${protocol}//${hostname}:5000/api`;
+    }
+  }
+
+  return '/api';
 })();
 
 export const APP_NAME = 'Portify';

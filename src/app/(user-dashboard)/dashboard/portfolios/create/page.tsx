@@ -3,9 +3,12 @@
 import { useState, useEffect, type FormEvent } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { usePortfolio } from '@/hooks/usePortfolio';
+import { useAuthStore } from '@/store/authStore';
 import { templateService } from '@/services/templateService';
+import { dashboardService } from '@/services/dashboardService';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
+import { UpgradeModal } from '@/components/dashboard/UpgradeModal';
 import { DashboardCard, PageHeader } from '@/components/dashboard/DashboardCard';
 import { Skeleton } from '@/components/dashboard/Skeleton';
 import { toast } from '@/store/toastStore';
@@ -14,6 +17,7 @@ import { ROUTES, TEMPLATE_IDS, DEFAULT_THEME } from '@/utils/constants';
 import { slugify } from '@/utils/slugify';
 import { CheckCircle2, Sparkles, Lock, ArrowLeft, ArrowRight } from 'lucide-react';
 import { cn } from '@/utils/cn';
+import { canCreateByUsage, isTemplateLockedForPlan } from '@/utils/plan';
 
 const TEMPLATE_GRADIENTS: Record<string, string> = {
   template1: 'from-violet-600 to-indigo-600',
@@ -30,6 +34,7 @@ export default function CreatePortfolioPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { createPortfolio } = usePortfolio();
+  const { token, planId, usageStats, setPlanUsage } = useAuthStore();
 
   const [step, setStep] = useState<1 | 2>(1);
   const [title, setTitle] = useState('');
@@ -39,6 +44,7 @@ export default function CreatePortfolioPage() {
     searchParams?.get('template') ?? TEMPLATE_IDS[0]
   );
   const [isLoading, setIsLoading] = useState(false);
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
 
   useEffect(() => {
     templateService.getAll(1, 50)
@@ -54,18 +60,45 @@ export default function CreatePortfolioPage() {
       .finally(() => setTemplatesLoading(false));
   }, []);
 
+  useEffect(() => {
+    if (!token) return;
+
+    dashboardService
+      .getStats(token)
+      .then((stats) => setPlanUsage(stats))
+      .catch(() => {});
+  }, [token, setPlanUsage]);
+
+  useEffect(() => {
+    const selected = templates.find((t) => t.id === selectedTemplate);
+    if (!selected) return;
+
+    if (isTemplateLockedForPlan(selected.id, selected.isPremium, planId)) {
+      setSelectedTemplate('template1');
+    }
+  }, [selectedTemplate, templates, planId]);
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     if (!title.trim()) {
       toast.error('Please enter a portfolio title.');
       return;
     }
+    if (usageStats && !canCreateByUsage(usageStats.portfolioUsage.used, usageStats.portfolioUsage.limit)) {
+      toast.error('Upgrade to Pro to continue');
+      setUpgradeOpen(true);
+      return;
+    }
+
     setIsLoading(true);
     try {
-      const portfolio = await createPortfolio({ title: title.trim(), templateId: selectedTemplate, theme: DEFAULT_THEME });
+      await createPortfolio({ title: title.trim(), templateId: selectedTemplate, theme: DEFAULT_THEME });
       toast.success('Portfolio created successfully!');
       router.push(ROUTES.PORTFOLIOS);
     } catch (err) {
+      if (err instanceof Error && /limit|upgrade|premium|plan/i.test(err.message)) {
+        setUpgradeOpen(true);
+      }
       toast.error(err instanceof Error ? err.message : 'Failed to create portfolio.');
     } finally {
       setIsLoading(false);
@@ -74,6 +107,9 @@ export default function CreatePortfolioPage() {
 
   const selectedTemplateObj = templates.find((t) => t.id === selectedTemplate);
   const progress = step === 1 ? 50 : 100;
+  const canCreatePortfolio = usageStats
+    ? canCreateByUsage(usageStats.portfolioUsage.used, usageStats.portfolioUsage.limit)
+    : true;
 
   return (
     <div className="mx-auto  space-y-5 pb-8">
@@ -86,6 +122,12 @@ export default function CreatePortfolioPage() {
           </Button>
         }
       />
+
+      {!canCreatePortfolio && (
+        <div className="rounded-xl border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-xs font-medium text-amber-300">
+          Limit reached. Upgrade to Pro
+        </div>
+      )}
 
       {/* Progress indicator */}
       <div className="space-y-2">
@@ -186,20 +228,36 @@ export default function CreatePortfolioPage() {
               <div className="grid gap-4 sm:grid-cols-3">
                 {templates.map((t) => {
                   const isSelected = selectedTemplate === t.id;
+                  const isLocked = isTemplateLockedForPlan(t.id, t.isPremium, planId);
                   const gradient = TEMPLATE_GRADIENTS[t.id] ?? 'from-violet-600 to-purple-600';
                   const emoji = TEMPLATE_EMOJIS[t.id] ?? '✨';
                   return (
                     <button
                       key={t.id}
                       type="button"
-                      onClick={() => setSelectedTemplate(t.id)}
+                      onClick={() => {
+                        if (isLocked) {
+                          setUpgradeOpen(true);
+                          return;
+                        }
+                        setSelectedTemplate(t.id);
+                      }}
+                      title={isLocked ? 'Available in Pro plan' : undefined}
                       className={cn(
                         'group relative text-left overflow-hidden rounded-xl border transition-all duration-200 hover:-translate-y-0.5',
+                        isLocked && 'opacity-80',
                         isSelected
                           ? 'border-[var(--color-primary)] shadow-[0_0_0_2px_rgba(124,58,237,0.25)]'
                           : 'border-[var(--color-border)] bg-[var(--color-bg)] hover:border-[var(--color-primary)]/40',
                       )}
                     >
+                      {isLocked && (
+                        <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/35 backdrop-blur-[1px]">
+                          <span className="rounded-full border border-amber-400/30 bg-amber-500/20 px-2 py-1 text-[10px] font-semibold text-amber-200">
+                            Available in Pro plan
+                          </span>
+                        </div>
+                      )}
                       {!t.isPremium && (
                         <span className="absolute left-2 top-2 z-10 flex items-center gap-1 rounded-full bg-[var(--color-primary)] px-1.5 py-0.5 text-[9px] font-semibold text-white">
                           <Sparkles size={9} /> Free
@@ -244,7 +302,7 @@ export default function CreatePortfolioPage() {
         <div className="flex items-center gap-3">
           {step === 2 && (
             <>
-              <Button type="submit" isLoading={isLoading} className="gap-1.5">
+              <Button type="submit" isLoading={isLoading} className="gap-1.5" disabled={!canCreatePortfolio}>
                 Create Portfolio
               </Button>
               <Button type="button" variant="ghost" onClick={() => setStep(1)} className="gap-1">
@@ -254,6 +312,16 @@ export default function CreatePortfolioPage() {
           )}
         </div>
       </form>
+
+      <UpgradeModal
+        isOpen={upgradeOpen}
+        onClose={() => setUpgradeOpen(false)}
+        onUpgraded={async () => {
+          if (!token) return;
+          const stats = await dashboardService.getStats(token);
+          setPlanUsage(stats);
+        }}
+      />
     </div>
   );
 }

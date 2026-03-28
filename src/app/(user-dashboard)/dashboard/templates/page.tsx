@@ -2,15 +2,21 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { motion } from 'framer-motion';
 import { templateService } from '@/services/templateService';
+import { dashboardService } from '@/services/dashboardService';
+import { useAuthStore } from '@/store/authStore';
 import { Button } from '@/components/ui/Button';
 import { PageHeader } from '@/components/dashboard/DashboardCard';
 import { Skeleton } from '@/components/dashboard/Skeleton';
+import { UpgradeModal } from '@/components/dashboard/UpgradeModal';
 import { toast } from '@/store/toastStore';
 import type { Template } from '@/types';
 import { CheckCircle2, Sparkles, Lock, Search, LayoutGrid, List, ArrowRight } from 'lucide-react';
 import { cn } from '@/utils/cn';
 import { ROUTES } from '@/utils/constants';
+import { isTemplateLockedForPlan } from '@/utils/plan';
+import { useScrollAnimationGroup } from '@/hooks/useScrollAnimation';
 
 const TEMPLATE_GRADIENTS: Record<string, string> = {
   template1: 'from-violet-600 to-indigo-600',
@@ -33,20 +39,31 @@ const CATEGORY_LABELS: Record<string, string> = {
 
 export default function TemplatesPage() {
   const router = useRouter();
+  const { token, planId, setPlanUsage } = useAuthStore();
   const [templates, setTemplates] = useState<Template[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState<string>('all');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
+  const gridRevealRef = useScrollAnimationGroup('.template-item', { staggerMs: 70, once: false, threshold: 0.08 });
 
   useEffect(() => {
-    setLoading(true);
     templateService.getAll(1, 50)
       .then((res) => setTemplates(res.data.filter((t) => t.isActive)))
       .catch(() => toast.error('Failed to load templates.'))
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (!token) return;
+
+    dashboardService
+      .getStats(token)
+      .then((stats) => setPlanUsage(stats))
+      .catch(() => {});
+  }, [token, setPlanUsage]);
 
   const categories = ['all', ...Array.from(new Set(templates.map((t) => t.category)))];
 
@@ -59,6 +76,11 @@ export default function TemplatesPage() {
 
   function handleUse() {
     if (!selected) return;
+    const selectedTemplate = templates.find((t) => t.id === selected);
+    if (selectedTemplate && isTemplateLockedForPlan(selectedTemplate.id, selectedTemplate.isPremium, planId)) {
+      setUpgradeOpen(true);
+      return;
+    }
     router.push(`${ROUTES.CREATE_PORTFOLIO}?template=${selected}`);
   }
 
@@ -140,24 +162,38 @@ export default function TemplatesPage() {
           <p className="text-xs text-[var(--color-text-muted)]">Try adjusting your search or filter.</p>
         </div>
       ) : viewMode === 'grid' ? (
-        <div className="grid gap-5 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+        <div ref={gridRevealRef} className="grid gap-5 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
           {filtered.map((t) => (
             <TemplateCard
               key={t.id}
               template={t}
+              locked={isTemplateLockedForPlan(t.id, t.isPremium, planId)}
               selected={selected === t.id}
-              onSelect={() => setSelected(t.id === selected ? null : t.id)}
+              onSelect={() => {
+                if (isTemplateLockedForPlan(t.id, t.isPremium, planId)) {
+                  setUpgradeOpen(true);
+                  return;
+                }
+                setSelected(t.id === selected ? null : t.id);
+              }}
             />
           ))}
         </div>
       ) : (
-        <div className="space-y-3">
+        <div ref={gridRevealRef} className="space-y-3">
           {filtered.map((t) => (
             <TemplateListItem
               key={t.id}
               template={t}
+              locked={isTemplateLockedForPlan(t.id, t.isPremium, planId)}
               selected={selected === t.id}
-              onSelect={() => setSelected(t.id === selected ? null : t.id)}
+              onSelect={() => {
+                if (isTemplateLockedForPlan(t.id, t.isPremium, planId)) {
+                  setUpgradeOpen(true);
+                  return;
+                }
+                setSelected(t.id === selected ? null : t.id);
+              }}
             />
           ))}
         </div>
@@ -180,16 +216,28 @@ export default function TemplatesPage() {
           </div>
         </div>
       )}
+
+      <UpgradeModal
+        isOpen={upgradeOpen}
+        onClose={() => setUpgradeOpen(false)}
+        onUpgraded={async () => {
+          if (!token) return;
+          const stats = await dashboardService.getStats(token);
+          setPlanUsage(stats);
+        }}
+      />
     </div>
   );
 }
 
 function TemplateCard({
   template: t,
+  locked,
   selected,
   onSelect,
 }: {
   template: Template;
+  locked: boolean;
   selected: boolean;
   onSelect: () => void;
 }) {
@@ -197,16 +245,36 @@ function TemplateCard({
   const emoji = TEMPLATE_EMOJIS[t.id] ?? '✨';
 
   return (
-    <button
+    <motion.button
       type="button"
       onClick={onSelect}
+      title={locked ? 'Available in Pro plan' : undefined}
+      whileHover={{ y: -3 }}
+      whileTap={{ scale: 0.99 }}
+      transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
       className={cn(
-        'group relative w-full text-left overflow-hidden rounded-2xl border transition-all duration-200 hover:shadow-[0_8px_32px_rgba(0,0,0,0.3)] hover:-translate-y-0.5',
+        'template-item gsap-reveal-hidden group relative w-full text-left overflow-hidden rounded-2xl border transition-all duration-200 hover:shadow-[0_8px_32px_rgba(0,0,0,0.3)] hover:-translate-y-0.5',
+        locked && 'opacity-85',
         selected
           ? 'border-[var(--color-primary)] shadow-[0_0_0_2px_rgba(124,58,237,0.25)]'
           : 'border-[var(--color-border)] bg-[var(--color-bg-card)] hover:border-[var(--color-primary)]/40',
       )}
     >
+      {locked && (
+        <motion.div
+          className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 bg-black/45 backdrop-blur-[2px]"
+          initial={{ opacity: 0.75 }}
+          animate={{ opacity: [0.7, 0.95, 0.7] }}
+          transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut' }}
+        >
+          <span className="rounded-full bg-amber-500/20 p-2 text-amber-300 shadow-[0_0_20px_rgba(251,191,36,0.25)]">
+            <Lock size={14} />
+          </span>
+          <span className="rounded-full border border-amber-400/30 bg-amber-500/20 px-2 py-1 text-[10px] font-semibold text-amber-200">
+            Available in Pro plan
+          </span>
+        </motion.div>
+      )}
       {!t.isPremium && (
         <span className="absolute left-3 top-3 z-10 flex items-center gap-1 rounded-full bg-[var(--color-primary)] px-2 py-0.5 text-[10px] font-semibold text-white">
           <Sparkles size={9} /> Popular
@@ -248,16 +316,18 @@ function TemplateCard({
           </span>
         </div>
       </div>
-    </button>
+    </motion.button>
   );
 }
 
 function TemplateListItem({
   template: t,
+  locked,
   selected,
   onSelect,
 }: {
   template: Template;
+  locked: boolean;
   selected: boolean;
   onSelect: () => void;
 }) {
@@ -265,11 +335,16 @@ function TemplateListItem({
   const emoji = TEMPLATE_EMOJIS[t.id] ?? '✨';
 
   return (
-    <button
+    <motion.button
       type="button"
       onClick={onSelect}
+      title={locked ? 'Available in Pro plan' : undefined}
+      whileHover={{ y: -2 }}
+      whileTap={{ scale: 0.995 }}
+      transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
       className={cn(
-        'group flex w-full items-center gap-4 rounded-xl border p-4 text-left transition-all duration-200 hover:-translate-y-px',
+        'template-item gsap-reveal-hidden group flex w-full items-center gap-4 rounded-xl border p-4 text-left transition-all duration-200 hover:-translate-y-px',
+        locked && 'opacity-85',
         selected
           ? 'border-[var(--color-primary)] bg-[var(--color-primary)]/5 shadow-[0_0_0_1px_rgba(124,58,237,0.2)]'
           : 'border-[var(--color-border)] bg-[var(--color-bg-card)] hover:border-[var(--color-primary)]/30',
@@ -293,6 +368,6 @@ function TemplateListItem({
       ) : (
         <ArrowRight size={16} className="shrink-0 text-[var(--color-text-muted)] opacity-0 group-hover:opacity-100 transition-opacity" />
       )}
-    </button>
+    </motion.button>
   );
 }

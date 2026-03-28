@@ -1,12 +1,15 @@
 ﻿'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/authStore';
 import { planService } from '@/services/planService';
+import { dashboardService } from '@/services/dashboardService';
 import { Button } from '@/components/ui/Button';
 import { DashboardCard, PageHeader } from '@/components/dashboard/DashboardCard';
 import { StatCardSkeleton, Skeleton } from '@/components/dashboard/Skeleton';
 import { toast } from '@/store/toastStore';
+import { useRazorpayCheckout } from '@/hooks/useRazorpayCheckout';
 import type { Plan, Subscription } from '@/types';
 import {
   CreditCard, CheckCircle2, Sparkles, Calendar, AlertCircle,
@@ -17,13 +20,23 @@ import { ROUTES } from '@/utils/constants';
 import { cn } from '@/utils/cn';
 
 export default function AccountPage() {
-  const { token } = useAuthStore();
+  const router = useRouter();
+  const { token, user, setPlanUsage, updateUser } = useAuthStore();
   const [plans, setPlans] = useState<Plan[]>([]);
   const [subscription, setSubscription] = useState<Subscription | null>(null);
   const [plansLoading, setPlansLoading] = useState(true);
   const [subLoading, setSubLoading] = useState(true);
   const [cancelling, setCancelling] = useState(false);
   const [checkingOut, setCheckingOut] = useState<string | null>(null);
+  const [verificationError, setVerificationError] = useState<string | null>(null);
+  const {
+    startCheckout,
+    retryVerification,
+    hasRetryVerification,
+    isVerifying,
+    isLoading,
+    resetRetryState,
+  } = useRazorpayCheckout();
 
   useEffect(() => {
     planService.getPlans()
@@ -41,24 +54,85 @@ export default function AccountPage() {
     }
   }, [token]);
 
+  const refreshPlanData = async () => {
+    if (!token) return;
+
+    const [nextSub, stats] = await Promise.all([
+      planService.getCurrentSubscription(token),
+      dashboardService.getStats(token),
+    ]);
+
+    setSubscription(nextSub.data);
+    setPlanUsage(stats);
+    updateUser({
+      subscription: {
+        ...(user?.subscription ?? {}),
+        planId: stats.planId,
+        planName: stats.planName,
+      },
+    });
+  };
+
   async function handleCheckout(planId: string) {
     if (!token) return;
+
+    resetRetryState();
+    setVerificationError(null);
     setCheckingOut(planId);
+
     try {
-      const res = await planService.createCheckout(
-        {
-          planId,
-          successUrl: `${window.location.origin}${ROUTES.ACCOUNT}?upgrade=success`,
-          cancelUrl: `${window.location.origin}${ROUTES.ACCOUNT}`,
-        },
+      await startCheckout({
         token,
-      );
-      window.location.href = res.data.checkoutUrl;
+        planId,
+        prefill: {
+          name: user?.name,
+          email: user?.email,
+        },
+        notes: {
+          source: 'account-billing',
+          planId,
+        },
+        onVerified: async () => {
+          await refreshPlanData();
+          toast.success('Payment successful. Your plan has been updated.');
+          router.push(ROUTES.DASHBOARD);
+        },
+        onVerificationFailed: (error) => {
+          const message = error instanceof Error ? error.message : 'Verification failed. Please retry.';
+          setVerificationError(message);
+          toast.error(message);
+        },
+        onPaymentFailed: (failure) => {
+          toast.error(failure.error?.description ?? 'Payment failed. Please try again.');
+        },
+      });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Checkout failed');
     } finally {
       setCheckingOut(null);
     }
+  }
+
+  async function handleRetryVerification() {
+    if (!token) {
+      toast.error('Please log in to retry verification.');
+      return;
+    }
+
+    setVerificationError(null);
+    await retryVerification(
+      token,
+      async () => {
+        await refreshPlanData();
+        toast.success('Verification completed and your plan is active.');
+        router.push(ROUTES.DASHBOARD);
+      },
+      (error) => {
+        const message = error instanceof Error ? error.message : 'Verification retry failed. Please try again.';
+        setVerificationError(message);
+        toast.error(message);
+      },
+    );
   }
 
   async function handleCancel() {
@@ -96,6 +170,26 @@ export default function AccountPage() {
         title="Account & Billing"
         subtitle="Manage your subscription plan and billing details."
       />
+
+      {hasRetryVerification && (
+        <DashboardCard>
+          <div className="rounded-xl border border-amber-500/25 bg-amber-500/10 p-4">
+            <p className="text-sm font-semibold text-amber-200">Payment received. Verification pending.</p>
+            <p className="mt-1 text-xs text-amber-100/80">
+              {verificationError ?? 'Please retry verification to unlock your plan immediately.'}
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleRetryVerification}
+              isLoading={isVerifying}
+              className="mt-3 border-amber-300/35 text-amber-100 hover:bg-amber-500/20"
+            >
+              Retry verification
+            </Button>
+          </div>
+        </DashboardCard>
+      )}
 
       {/* Current Subscription */}
       <DashboardCard
@@ -257,7 +351,8 @@ export default function AccountPage() {
                     <Button
                       size="sm"
                       fullWidth
-                      isLoading={checkingOut === plan.id}
+                      isLoading={checkingOut === plan.id || (isLoading && checkingOut === plan.id)}
+                      disabled={isLoading}
                       onClick={() => handleCheckout(plan.id)}
                       className="gap-1.5"
                     >
@@ -278,7 +373,7 @@ export default function AccountPage() {
         <div className="flex items-start gap-3">
           <CreditCard size={16} className="mt-0.5 shrink-0 text-[var(--color-text-muted)]" />
           <div className="text-xs text-[var(--color-text-muted)] leading-relaxed">
-            <p>Payments are processed securely via <strong className="text-[var(--color-text)]">Stripe</strong>. You can cancel your subscription at any time.</p>
+            <p>Payments are processed securely via <strong className="text-[var(--color-text)]">Razorpay</strong>. You can cancel your subscription at any time.</p>
             <p className="mt-1">
               Questions?{' '}
               <a href="mailto:support@portify.dev" className="text-[var(--color-primary)] hover:underline">

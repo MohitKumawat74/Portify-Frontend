@@ -5,6 +5,29 @@ export interface User {
   role: 'user' | 'admin';
   createdAt: string;
   avatar?: string;
+  subscription?: {
+    planId?: string;
+    planName?: string;
+    status?: string;
+    currentPeriodStart?: string | null;
+    currentPeriodEnd?: string | null;
+    cancelAtPeriodEnd?: boolean;
+  };
+}
+
+export interface UsageMeter {
+  used: number;
+  limit: number | null;
+  remaining: number | null;
+  percentage: number;
+}
+
+export interface DashboardPlanStats {
+  planId: string;
+  planName: string;
+  isPro: boolean;
+  portfolioUsage: UsageMeter;
+  projectUsage: UsageMeter;
 }
 
 export interface Theme {

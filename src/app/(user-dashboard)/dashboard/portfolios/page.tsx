@@ -2,17 +2,21 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { usePortfolio } from '@/hooks/usePortfolio';
 import { useAuthStore } from '@/store/authStore';
 import { portfolioService } from '@/services/portfolioService';
+import { dashboardService } from '@/services/dashboardService';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
+import { UpgradeModal } from '@/components/dashboard/UpgradeModal';
 import { DashboardCard, PageHeader } from '@/components/dashboard/DashboardCard';
 import { CardSkeleton } from '@/components/dashboard/Skeleton';
 import { toast } from '@/store/toastStore';
 import { ROUTES } from '@/utils/constants';
 import { formatDate } from '@/utils/helpers';
 import { cn } from '@/utils/cn';
+import { canCreateByUsage } from '@/utils/plan';
 import {
   FolderOpen, PlusCircle, Pencil, Trash2, ExternalLink,
   Search, Globe, EyeOff, ChevronDown, Filter, BarChart3,
@@ -33,18 +37,29 @@ const TEMPLATE_NAMES: Record<string, string> = {
 };
 
 export default function PortfoliosPage() {
+  const router = useRouter();
   const { portfolios, fetchPortfolios, deletePortfolio, isLoading, updatePortfolio } = usePortfolio();
-  const { token } = useAuthStore();
+  const { token, usageStats, setPlanUsage } = useAuthStore();
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
   const [sortKey, setSortKey] = useState<SortKey>('updated');
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [deleteName, setDeleteName] = useState('');
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
 
   useEffect(() => {
     fetchPortfolios();
   }, [fetchPortfolios]);
+
+  useEffect(() => {
+    if (!token) return;
+
+    dashboardService
+      .getStats(token)
+      .then((stats) => setPlanUsage(stats))
+      .catch(() => {});
+  }, [token, setPlanUsage]);
 
   const filtered = portfolios
     .filter((p) => {
@@ -92,9 +107,13 @@ export default function PortfoliosPage() {
 
   const published = portfolios.filter((p) => p.isPublished).length;
   const drafts = portfolios.filter((p) => !p.isPublished).length;
+  const canCreatePortfolio = usageStats
+    ? canCreateByUsage(usageStats.portfolioUsage.used, usageStats.portfolioUsage.limit)
+    : true;
 
   return (
-    <div className="space-y-5 pb-8">
+    <>
+      <div className="space-y-5 pb-8">
       <PageHeader
         title="My Portfolios"
         subtitle={
@@ -103,15 +122,29 @@ export default function PortfoliosPage() {
             : 'Create and manage your portfolios'
         }
         actions={
-          <Link href={ROUTES.CREATE_PORTFOLIO}>
-            <Button size="sm" className="gap-1.5">
+          <Button
+            size="sm"
+            className="gap-1.5"
+            disabled={!canCreatePortfolio}
+            onClick={() => {
+              if (canCreatePortfolio) {
+                router.push(ROUTES.CREATE_PORTFOLIO);
+                return;
+              }
+              setUpgradeOpen(true);
+            }}
+            title={!canCreatePortfolio ? 'Limit reached. Upgrade to Pro' : undefined}
+          >
               <PlusCircle size={14} />
               <span className="hidden sm:inline">New Portfolio</span>
               <span className="sm:hidden">New</span>
-            </Button>
-          </Link>
+          </Button>
         }
       />
+
+      {!canCreatePortfolio && (
+        <p className="text-xs font-medium text-amber-400">Limit reached. Upgrade to Pro</p>
+      )}
 
       {/* Summary pills */}
       {!isLoading && portfolios.length > 0 && (
@@ -188,11 +221,17 @@ export default function PortfoliosPage() {
                 : 'Create your first portfolio to get started.'}
             </p>
             {!search && filter === 'all' && (
-              <Link href={ROUTES.CREATE_PORTFOLIO}>
-                <Button size="sm" className="gap-1.5">
-                  <PlusCircle size={14} /> Create Portfolio
+              canCreatePortfolio ? (
+                <Link href={ROUTES.CREATE_PORTFOLIO}>
+                  <Button size="sm" className="gap-1.5">
+                    <PlusCircle size={14} /> Create Portfolio
+                  </Button>
+                </Link>
+              ) : (
+                <Button size="sm" className="gap-1.5" onClick={() => setUpgradeOpen(true)}>
+                  <PlusCircle size={14} /> Upgrade to create more
                 </Button>
-              </Link>
+              )
             )}
           </div>
         </DashboardCard>
@@ -290,7 +329,7 @@ export default function PortfoliosPage() {
           <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-4">
             <p className="text-sm text-[var(--color-text-muted)]">
               Are you sure you want to permanently delete{' '}
-              <span className="font-semibold text-[var(--color-text)]">"{deleteName}"</span>?
+              <span className="font-semibold text-[var(--color-text)]">&quot;{deleteName}&quot;</span>?
             </p>
             <p className="mt-1 text-xs text-[var(--color-text-muted)]">
               This action cannot be undone. All data including sections and analytics will be lost.
@@ -302,6 +341,17 @@ export default function PortfoliosPage() {
           </div>
         </div>
       </Modal>
-    </div>
+      </div>
+
+      <UpgradeModal
+        isOpen={upgradeOpen}
+        onClose={() => setUpgradeOpen(false)}
+        onUpgraded={async () => {
+          if (!token) return;
+          const stats = await dashboardService.getStats(token);
+          setPlanUsage(stats);
+        }}
+      />
+    </>
   );
 }

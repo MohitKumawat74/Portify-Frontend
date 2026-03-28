@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { StatCard } from '@/components/dashboard/StatCard';
 import { DashboardCard, PageHeader } from '@/components/dashboard/DashboardCard';
+import { EmptyState } from '@/components/ui/EmptyState';
 import { Users, FolderOpen, Globe, UserPlus } from 'lucide-react';
 import { adminService } from '@/services/adminService';
 import { useAuthStore } from '@/store/authStore';
@@ -116,7 +117,11 @@ export default function AdminAnalyticsPage() {
           ) : analytics?.signupsByDay?.length ? (
             <SignupsChart data={analytics.signupsByDay} />
           ) : (
-            <p className="py-8 text-center text-sm text-[var(--color-text-muted)]">No signup data available</p>
+            <EmptyState
+              title="No signup data available"
+              description="Sign-up metrics will appear here once data is available."
+              className="py-8"
+            />
           )}
         </DashboardCard>
 
@@ -153,7 +158,11 @@ export default function AdminAnalyticsPage() {
               })}
             </div>
           ) : (
-            <p className="py-8 text-center text-sm text-[var(--color-text-muted)]">No template usage data</p>
+            <EmptyState
+              title="No template usage data"
+              description="Template adoption metrics will appear here once available."
+              className="py-8"
+            />
           )}
         </DashboardCard>
       </div>

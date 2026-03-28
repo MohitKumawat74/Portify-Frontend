@@ -8,6 +8,7 @@ import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
 import { DashboardCard, PageHeader } from '@/components/dashboard/DashboardCard';
 import { CardSkeleton } from '@/components/dashboard/Skeleton';
+import { EmptyState } from '@/components/ui/EmptyState';
 import { toast } from '@/store/toastStore';
 import type { Template } from '@/types';
 import { PlusCircle, ToggleLeft, ToggleRight, Layout, Trash2, Pencil } from 'lucide-react';
@@ -151,14 +152,14 @@ export default function AdminTemplatesPage() {
         </div>
       ) : templates.length === 0 ? (
         <DashboardCard>
-          <div className="py-14 text-center">
-            <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-[var(--color-primary)]/10">
-              <Layout size={20} className="text-[var(--color-primary)]" />
-            </div>
-            <p className="mb-1 text-sm font-semibold text-[var(--color-text)]">No templates yet</p>
-            <p className="mb-4 text-xs text-[var(--color-text-muted)]">Create the first template to get started.</p>
-            <Button size="sm" onClick={openAddModal}>Add Template</Button>
-          </div>
+          <EmptyState
+            icon={Layout}
+            title="No templates yet"
+            description="Create the first template to get started."
+            ctaLabel="Add Template"
+            onCtaClick={openAddModal}
+            className="py-14"
+          />
         </DashboardCard>
       ) : (
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">

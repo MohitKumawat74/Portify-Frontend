@@ -2,18 +2,25 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { motion } from 'framer-motion';
 import { useAuth } from '@/hooks/useAuth';
 import { usePortfolio } from '@/hooks/usePortfolio';
 import { usePortfolioStore } from '@/store/portfolioStore';
 import { useAuthStore } from '@/store/authStore';
 import { portfolioService } from '@/services/portfolioService';
+import { dashboardService } from '@/services/dashboardService';
 import { Button } from '@/components/ui/Button';
 import { StatCard } from '@/components/dashboard/StatCard';
 import { DashboardCard, PageHeader } from '@/components/dashboard/DashboardCard';
 import { StatCardSkeleton, CardSkeleton } from '@/components/dashboard/Skeleton';
+import { UpgradeModal } from '@/components/dashboard/UpgradeModal';
+import { EmptyState } from '@/components/ui/EmptyState';
 import { ROUTES } from '@/utils/constants';
 import { formatDate } from '@/utils/helpers';
 import { cn } from '@/utils/cn';
+import type { DashboardPlanStats } from '@/types';
+import { canCreateByUsage, usageLabel } from '@/utils/plan';
 import { MOCK_PORTFOLIOS, MOCK_PORTFOLIO_ANALYTICS } from '@/data/mockUser';
 import {
   FolderOpen,
@@ -30,18 +37,21 @@ import {
   BarChart3,
   Layout,
   CreditCard,
+  Crown,
 } from 'lucide-react';
 
 /** Flip to false when connecting to the real API */
-const USE_MOCK = true;
+const USE_MOCK = false;
 
 export default function DashboardPage() {
+  const router = useRouter();
   const { user } = useAuth();
-  const { token } = useAuthStore();
+  const { token, planId, planName, setPlanUsage } = useAuthStore();
   const { portfolios, fetchPortfolios, isLoading } = usePortfolio();
   const { setPortfolios, setLoading } = usePortfolioStore();
   const [totalViews, setTotalViews] = useState<number | null>(null);
-  const [viewsLoading, setViewsLoading] = useState(false);
+  const [planStats, setPlanStats] = useState<DashboardPlanStats | null>(null);
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
 
   useEffect(() => {
     if (USE_MOCK) {
@@ -52,6 +62,17 @@ export default function DashboardPage() {
     fetchPortfolios();
   }, [fetchPortfolios, setPortfolios, setLoading]);
 
+  useEffect(() => {
+    if (!token) return;
+
+    dashboardService
+      .getStats(token)
+      .then((stats) => {
+        setPlanStats(stats);
+        setPlanUsage(stats);
+      });
+  }, [token, setPlanUsage]);
+
   // Aggregate total views across all published portfolios
   useEffect(() => {
     if (USE_MOCK) {
@@ -59,21 +80,19 @@ export default function DashboardPage() {
         (sum, a) => sum + a.totalViews,
         0,
       );
-      setTotalViews(total);
-      return;
+      const mockTotalTimer = window.setTimeout(() => setTotalViews(total), 0);
+      return () => window.clearTimeout(mockTotalTimer);
     }
     const published = portfolios.filter((p) => p.isPublished);
     if (!token || published.length === 0) {
-      setTotalViews(0);
-      return;
+      const zeroTimer = window.setTimeout(() => setTotalViews(0), 0);
+      return () => window.clearTimeout(zeroTimer);
     }
-    setViewsLoading(true);
     const requests = published.map((p) =>
       portfolioService.getAnalytics(p.id, token).then((r) => r.data.totalViews).catch(() => 0)
     );
     Promise.all(requests)
-      .then((views) => setTotalViews(views.reduce((a, b) => a + b, 0)))
-      .finally(() => setViewsLoading(false));
+      .then((views) => setTotalViews(views.reduce((a, b) => a + b, 0)));
   }, [portfolios, token]);
 
   const published = portfolios.filter((p) => p.isPublished);
@@ -84,6 +103,12 @@ export default function DashboardPage() {
 
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+  const activeStats = planStats;
+  const planStatsLoading = token ? activeStats === null : false;
+  const canCreatePortfolio = activeStats
+    ? canCreateByUsage(activeStats.portfolioUsage.used, activeStats.portfolioUsage.limit)
+    : true;
+  const isFreeTier = activeStats ? !activeStats.isPro : planId === 'plan_free';
 
   const templateGradient = (id: string) =>
     id === 'template1' ? 'from-violet-500 to-purple-500' :
@@ -91,21 +116,103 @@ export default function DashboardPage() {
     'from-blue-500 to-cyan-500';
 
   return (
-    <div className="space-y-6 pb-8">
+    <>
+      <div className="space-y-6 pb-8">
       {/* ── Header ─────────────────────────────────────── */}
       <PageHeader
         title={`${greeting}, ${user?.name?.split(' ')[0] ?? 'there'} 👋`}
         subtitle="Here's what's happening with your portfolios today."
         actions={
-          <Link href={ROUTES.CREATE_PORTFOLIO}>
-            <Button size="sm" className="gap-1.5">
+          <>
+            {isFreeTier && (
+              <Button size="sm" variant="glow" className="gap-1.5" onClick={() => setUpgradeOpen(true)}>
+                <Crown size={14} /> Upgrade to Pro
+              </Button>
+            )}
+            <Button
+              size="sm"
+              className="gap-1.5"
+              onClick={() => {
+                if (canCreatePortfolio) {
+                  router.push(ROUTES.CREATE_PORTFOLIO);
+                  return;
+                }
+                setUpgradeOpen(true);
+              }}
+              disabled={!canCreatePortfolio}
+              title={!canCreatePortfolio ? 'Limit reached. Upgrade to Pro' : undefined}
+            >
               <PlusCircle size={14} />
               <span className="hidden sm:inline">New Portfolio</span>
               <span className="sm:hidden">New</span>
             </Button>
-          </Link>
+          </>
         }
       />
+
+      {/* Plan usage */}
+      <DashboardCard
+        title="Plan & Usage"
+        subtitle={planStatsLoading ? 'Loading usage...' : `${planName} plan status and limits`}
+        actions={
+          isFreeTier ? (
+            <Button size="sm" variant="outline" onClick={() => setUpgradeOpen(true)} className="gap-1">
+              <CreditCard size={13} /> Upgrade
+            </Button>
+          ) : (
+            <span className="rounded-full bg-emerald-500/15 px-2.5 py-1 text-[10px] font-semibold text-emerald-400">
+              PRO
+            </span>
+          )
+        }
+      >
+        {planStatsLoading ? (
+          <div className="space-y-3">
+            <CardSkeleton />
+          </div>
+        ) : activeStats ? (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-medium text-[var(--color-text)]">Current Plan</span>
+              <span className="rounded-full bg-[var(--color-primary)]/15 px-2 py-0.5 font-semibold text-[var(--color-primary)]">
+                {activeStats.planName}
+              </span>
+            </div>
+
+            {[
+              {
+                label: 'Portfolio usage',
+                used: activeStats.portfolioUsage.used,
+                limit: activeStats.portfolioUsage.limit,
+                pct: activeStats.portfolioUsage.percentage,
+              },
+              {
+                label: 'Project usage',
+                used: activeStats.projectUsage.used,
+                limit: activeStats.projectUsage.limit,
+                pct: activeStats.projectUsage.percentage,
+              },
+            ].map((meter) => (
+              <div key={meter.label} className="space-y-1.5">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-[var(--color-text-muted)]">{meter.label}</span>
+                  <span className="font-semibold text-[var(--color-text)]">{usageLabel(meter.used, meter.limit)}</span>
+                </div>
+                <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+                  <motion.div
+                    className="h-full rounded-full bg-gradient-to-r from-[var(--color-primary)] to-[var(--color-secondary)] transition-all duration-300"
+                    initial={{ width: 0 }}
+                    animate={{ width: `${Math.max(2, meter.pct)}%` }}
+                    transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-xs text-[var(--color-text-muted)]">Usage stats unavailable right now.</p>
+        )}
+      </DashboardCard>
 
       {/* ── Stats ──────────────────────────────────────── */}
       <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
@@ -113,38 +220,46 @@ export default function DashboardPage() {
           Array.from({ length: 4 }).map((_, i) => <StatCardSkeleton key={i} />)
         ) : (
           <>
-            <StatCard
-              label="Total Portfolios"
-              value={portfolios.length}
-              icon={<FolderOpen />}
-              gradient="from-violet-600 to-purple-600"
-              change="All time"
-              trend="neutral"
-            />
-            <StatCard
-              label="Published"
-              value={published.length}
-              icon={<Globe />}
-              gradient="from-emerald-600 to-teal-600"
-              change={published.length > 0 ? 'Live & visible' : 'None live yet'}
-              trend={published.length > 0 ? 'up' : 'neutral'}
-            />
-            <StatCard
-              label="Drafts"
-              value={drafts.length}
-              icon={<FileText />}
-              gradient="from-amber-500 to-orange-500"
-              change={drafts.length > 0 ? 'In progress' : 'No drafts'}
-              trend="neutral"
-            />
-            <StatCard
-              label="Total Views"
-              value={viewsLoading || isLoading ? '—' : (totalViews ?? 0).toLocaleString()}
-              icon={<Eye />}
-              gradient="from-blue-600 to-cyan-600"
-              change={published.length > 0 ? 'Across all portfolios' : 'Publish to track'}
-              trend={totalViews && totalViews > 0 ? 'up' : 'neutral'}
-            />
+            <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }}>
+              <StatCard
+                label="Total Portfolios"
+                value={portfolios.length}
+                icon={<FolderOpen />}
+                gradient="from-violet-600 to-purple-600"
+                change="All time"
+                trend="neutral"
+              />
+            </motion.div>
+            <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, delay: 0.05 }}>
+              <StatCard
+                label="Published"
+                value={published.length}
+                icon={<Globe />}
+                gradient="from-emerald-600 to-teal-600"
+                change={published.length > 0 ? 'Live & visible' : 'None live yet'}
+                trend={published.length > 0 ? 'up' : 'neutral'}
+              />
+            </motion.div>
+            <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, delay: 0.1 }}>
+              <StatCard
+                label="Drafts"
+                value={drafts.length}
+                icon={<FileText />}
+                gradient="from-amber-500 to-orange-500"
+                change={drafts.length > 0 ? 'In progress' : 'No drafts'}
+                trend="neutral"
+              />
+            </motion.div>
+            <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, delay: 0.15 }}>
+              <StatCard
+                label="Total Views"
+                value={isLoading || totalViews === null ? '—' : totalViews.toLocaleString()}
+                icon={<Eye />}
+                gradient="from-blue-600 to-cyan-600"
+                change={published.length > 0 ? 'Across all portfolios' : 'Publish to track'}
+                trend={totalViews && totalViews > 0 ? 'up' : 'neutral'}
+              />
+            </motion.div>
           </>
         )}
       </div>
@@ -152,20 +267,42 @@ export default function DashboardPage() {
       {/* ── Quick Actions ──────────────────────────────── */}
       <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
         {[
-          { label: 'Create Portfolio', href: ROUTES.CREATE_PORTFOLIO, icon: <PlusCircle size={16} />, color: 'from-violet-600 to-purple-600' },
+          { label: 'Create Portfolio', href: ROUTES.CREATE_PORTFOLIO, icon: <PlusCircle size={16} />, color: 'from-violet-600 to-purple-600', guarded: true },
           { label: 'My Portfolios',    href: ROUTES.PORTFOLIOS,        icon: <FolderOpen  size={16} />, color: 'from-blue-600 to-cyan-600' },
           { label: 'Browse Templates', href: ROUTES.TEMPLATES,         icon: <Layout      size={16} />, color: 'from-emerald-600 to-teal-600' },
           { label: 'Analytics',        href: ROUTES.ANALYTICS,         icon: <BarChart3   size={16} />, color: 'from-rose-500 to-pink-500' },
+          ...(isFreeTier
+            ? [{ label: 'Upgrade to Pro', href: ROUTES.PRICING_PAGE, icon: <Crown size={16} />, color: 'from-amber-500 to-orange-500', guarded: false, openUpgrade: true as const }]
+            : []),
         ].map((a) => (
-          <Link key={a.href} href={a.href}>
-            <div className="group flex items-center gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-card)] px-3 py-3 sm:px-4 sm:py-3.5 transition-all duration-200 hover:border-[var(--color-primary)]/40 hover:shadow-[0_4px_24px_rgba(0,0,0,0.2)] hover:-translate-y-0.5">
+          <button
+            key={a.href}
+            type="button"
+            onClick={() => {
+              if (a.openUpgrade) {
+                setUpgradeOpen(true);
+                return;
+              }
+              if (a.guarded && !canCreatePortfolio) {
+                setUpgradeOpen(true);
+                return;
+              }
+              router.push(a.href);
+            }}
+            className={cn('text-left', a.guarded && !canCreatePortfolio && 'cursor-not-allowed')}
+            title={a.guarded && !canCreatePortfolio ? 'Limit reached. Upgrade to Pro' : undefined}
+          >
+            <div className={cn(
+              'group flex items-center gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-card)] px-3 py-3 sm:px-4 sm:py-3.5 transition-all duration-200 hover:border-[var(--color-primary)]/40 hover:shadow-[0_4px_24px_rgba(0,0,0,0.2)] hover:-translate-y-0.5',
+              a.guarded && !canCreatePortfolio && 'opacity-60 hover:-translate-y-0',
+            )}>
               <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br ${a.color} text-white`}>
                 {a.icon}
               </div>
               <span className="text-xs sm:text-sm font-medium text-[var(--color-text)] truncate">{a.label}</span>
               <ArrowRight size={14} className="ml-auto shrink-0 text-[var(--color-text-muted)] transition-transform group-hover:translate-x-0.5" />
             </div>
-          </Link>
+          </button>
         ))}
       </div>
 
@@ -189,19 +326,13 @@ export default function DashboardPage() {
                 {Array.from({ length: 4 }).map((_, i) => <CardSkeleton key={i} />)}
               </div>
             ) : recent.length === 0 ? (
-              <div className="py-12 text-center">
-                <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--color-primary)]/10">
-                  <FolderOpen size={24} className="text-[var(--color-primary)]" />
-                </div>
-                <p className="mb-1 text-sm font-medium text-[var(--color-text)]">No portfolios yet</p>
-                <p className="mb-4 text-xs text-[var(--color-text-muted)]">Create your first portfolio to get started.</p>
-                <Link href={ROUTES.CREATE_PORTFOLIO}>
-                  <Button size="sm">
-                    <PlusCircle size={14} className="mr-1.5" />
-                    Create Portfolio
-                  </Button>
-                </Link>
-              </div>
+              <EmptyState
+                icon={FolderOpen}
+                title="No portfolios yet"
+                description="Create your first portfolio to get started."
+                ctaLabel="Create Portfolio"
+                ctaHref={ROUTES.CREATE_PORTFOLIO}
+              />
             ) : (
               <div className="grid gap-3 sm:grid-cols-2">
                 {recent.map((p) => (
@@ -323,6 +454,17 @@ export default function DashboardPage() {
           </DashboardCard>
         </div>
       </div>
-    </div>
+      </div>
+      <UpgradeModal
+        isOpen={upgradeOpen}
+        onClose={() => setUpgradeOpen(false)}
+        onUpgraded={async () => {
+          if (!token) return;
+          const stats = await dashboardService.getStats(token);
+          setPlanStats(stats);
+          setPlanUsage(stats);
+        }}
+      />
+    </>
   );
 }
