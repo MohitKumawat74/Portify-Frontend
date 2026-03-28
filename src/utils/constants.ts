@@ -43,6 +43,9 @@ export const ROUTES = {
   TEMPLATES_PAGE: '/templates',
   PRICING_PAGE: '/pricing',
   ABOUT_PAGE: '/about',
+  BLOG_PAGE: '/blog',
+  CONTACT_PAGE: '/contact',
+  CHANGELOG_PAGE: '/changelog',
   // Legal pages
   PRIVACY_POLICY: '/privacy',
   TERMS_OF_SERVICE: '/terms',

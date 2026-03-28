@@ -10,16 +10,15 @@ const FOOTER_LINKS = [
       { label: 'Features', href: ROUTES.FEATURES_PAGE },
       { label: 'Templates', href: ROUTES.TEMPLATES_PAGE },
       { label: 'Pricing', href: ROUTES.PRICING_PAGE },
-      { label: 'Changelog', href: '#' },
+      { label: 'Changelog', href: ROUTES.CHANGELOG_PAGE },
     ],
   },
   {
     heading: 'Company',
     links: [
       { label: 'About', href: ROUTES.ABOUT_PAGE },
-      { label: 'Blog', href: '#' },
-      { label: 'Careers', href: '#' },
-      { label: 'Contact', href: '#' },
+      { label: 'Blog', href: ROUTES.BLOG_PAGE },
+      { label: 'Contact', href: ROUTES.CONTACT_PAGE },
     ],
   },
   // {

@@ -3,7 +3,7 @@
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { motion, useScroll, useTransform } from 'framer-motion';
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import {
   ArrowRight, Zap, Palette, Globe, Code2, Layers, Sparkles,
   Star, CheckCircle, Play, ExternalLink, ChevronDown,
@@ -235,6 +235,17 @@ export default function HomePage() {
   const { scrollYProgress } = useScroll();
   const heroOpacity = useTransform(scrollYProgress, [0, 0.5], [1, 0]);
   const heroScale = useTransform(scrollYProgress, [0, 0.5], [1, 0.8]);
+
+  // How It Works — horizontal scroll-trigger
+  const howItWorksRef = useRef<HTMLElement>(null);
+  const { scrollYProgress: howProgress } = useScroll({
+    target: howItWorksRef,
+    offset: ['start end', 'center 0.65'],
+  });
+  const step1X    = useTransform(howProgress, [0, 1], [-90, 0]);
+  const step3X    = useTransform(howProgress, [0, 1], [90, 0]);
+  const stepsOpacity = useTransform(howProgress, [0, 0.45], [0, 1]);
+  const lineScaleX   = useTransform(howProgress, [0.15, 0.9], [0, 1]);
 
   return (
     <>
@@ -530,7 +541,7 @@ export default function HomePage() {
         </section>
 
         {/* 6. HOW IT WORKS */}
-        <section className="relative z-10 py-20 sm:py-24 md:py-28">
+        <section ref={howItWorksRef} className="relative z-10 py-20 sm:py-24 md:py-28">
           <Container>
             <SectionHeader
               centered
@@ -538,28 +549,39 @@ export default function HomePage() {
               title="From zero to live in 3 steps"
               subtitle="No coding. No design skills. No hosting headaches. Just a stunning live portfolio."
             />
-            <div className="relative">
-              {/* Connecting line (desktop) */}
-              <div className="absolute left-1/2 top-8 sm:top-10 md:top-12 hidden h-px w-2/3 -translate-x-1/2 bg-gradient-to-r from-transparent via-white/15 to-transparent md:block" />
-              <div className="grid grid-cols-1 gap-4 sm:gap-5 md:gap-6 md:grid-cols-3">
+            <div className="relative mt-10 sm:mt-14">
+              {/* Animated connecting line that draws as you scroll (desktop) */}
+              <div className="absolute inset-x-[16.5%] top-[3.25rem] hidden overflow-hidden md:block" style={{ height: '1px' }}>
+                <motion.div
+                  className="h-full w-full origin-left bg-gradient-to-r from-transparent via-white/25 to-transparent"
+                  style={{ scaleX: lineScaleX }}
+                />
+              </div>
+              <div className="grid grid-cols-1 gap-5 sm:gap-6 md:gap-8 md:grid-cols-3">
                 {STEPS.map((s, i) => (
                   <motion.div
                     key={s.num}
-                    initial={{ opacity: 0, y: 60, rotateX: 15 }}
-                    whileInView={{ opacity: 1, y: 0, rotateX: 0 }}
-                    viewport={{ once: true, amount: 0.3 }}
-                    transition={{ duration: 0.65, delay: i * 0.15, ease: [0.22, 1, 0.36, 1] }}
-                    style={{ transformPerspective: 600 }}
-                    className="glass rounded-xl sm:rounded-2xl p-6 sm:p-7 md:p-8 text-center transition-transform duration-300 hover:-translate-y-1 sm:hover:-translate-y-1.5"
+                    style={{
+                      x: i === 0 ? step1X : i === 2 ? step3X : undefined,
+                      opacity: stepsOpacity,
+                    }}
+                    whileHover={{ y: -8, transition: { duration: 0.25, ease: 'easeOut' } }}
+                    className="group glass relative overflow-hidden rounded-xl sm:rounded-2xl p-7 sm:p-8 text-center"
                   >
-                    <span className="font-space-grotesk mb-3 sm:mb-4 md:mb-5 block text-3xl sm:text-4xl md:text-5xl font-extrabold gradient-text leading-none">
-                      {s.num}
-                    </span>
-                    <div className="mx-auto mb-3 sm:mb-4 flex h-10 w-10 sm:h-11 sm:w-11 md:h-12 md:w-12 items-center justify-center rounded-lg sm:rounded-xl bg-[var(--color-primary)]/10">
-                      <s.icon className="h-5 w-5 sm:h-5.5 sm:w-5.5 md:h-6 md:w-6 text-[var(--color-primary)]" />
+                    {/* Top glow line on hover */}
+                    <div className="absolute inset-x-0 top-0 h-[2px] rounded-t-2xl bg-gradient-to-r from-[var(--color-primary)] to-[var(--color-secondary)] opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
+                    {/* Hover background bloom */}
+                    <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-[var(--color-primary)]/5 to-[var(--color-secondary)]/5 opacity-0 transition-opacity duration-500 group-hover:opacity-100 rounded-xl sm:rounded-2xl" />
+                    <div className="relative z-10">
+                      <span className="font-space-grotesk mb-4 block text-4xl sm:text-5xl font-extrabold gradient-text leading-none">
+                        {s.num}
+                      </span>
+                      <div className="mx-auto mb-4 flex h-11 w-11 sm:h-12 sm:w-12 items-center justify-center rounded-xl bg-[var(--color-primary)]/10 transition-transform duration-300 group-hover:scale-110">
+                        <s.icon className="h-5 w-5 sm:h-6 sm:w-6 text-[var(--color-primary)]" />
+                      </div>
+                      <h3 className="mb-2 text-base sm:text-lg font-bold text-white">{s.title}</h3>
+                      <p className="text-sm leading-relaxed text-white/50 transition-colors duration-300 group-hover:text-white/75">{s.desc}</p>
                     </div>
-                    <h3 className="mb-1.5 sm:mb-2 text-base sm:text-lg font-bold text-white">{s.title}</h3>
-                    <p className="text-xs sm:text-sm leading-relaxed text-[var(--color-text-muted)]">{s.desc}</p>
                   </motion.div>
                 ))}
               </div>

@@ -115,35 +115,45 @@ export default function FeaturesPage() {
 
         {/* Feature groups */}
         {FEATURE_GROUPS.map((group, gi) => (
-          <section key={group.group} className="py-12 sm:py-16 md:py-20">
+          <section key={group.group} className="py-16 sm:py-20 md:py-28">
             <Container>
               <motion.div
                 initial={{ opacity: 0, x: -30 }}
                 whileInView={{ opacity: 1, x: 0 }}
                 viewport={{ once: true, amount: 0.4 }}
                 transition={{ duration: 0.5 }}
-                className="mb-8 sm:mb-10 flex items-center gap-3"
+                className="mb-10 sm:mb-12 flex items-center gap-3"
               >
                 <div className={`h-1 w-8 rounded-full bg-gradient-to-r ${group.gradient}`} />
                 <h2 className="font-space-grotesk text-xs font-bold uppercase tracking-widest text-[var(--color-text-muted)]">
                   {group.group}
                 </h2>
               </motion.div>
-              <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="grid gap-6 sm:grid-cols-2 sm:gap-7 lg:grid-cols-3 lg:gap-8">
                 {group.items.map((item, ii) => (
                   <motion.div
                     key={item.title}
-                    initial={{ opacity: 0, y: 50, scale: 0.96 }}
-                    whileInView={{ opacity: 1, y: 0, scale: 1 }}
-                    viewport={{ once: true, amount: 0.25 }}
-                    transition={{ duration: 0.6, delay: (gi * 0.05) + ii * 0.1, ease: [0.22, 1, 0.36, 1] }}
-                    className="glass gradient-border rounded-2xl p-6 transition-all duration-300 hover:-translate-y-1.5 hover:shadow-xl hover:shadow-[var(--color-primary)]/10 sm:p-7"
+                    initial={{ opacity: 0, y: 56 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    viewport={{ once: true, amount: 0.2 }}
+                    transition={{ duration: 0.65, delay: ii * 0.13, ease: [0.22, 1, 0.36, 1] }}
+                    whileHover={{ y: -10, transition: { duration: 0.3, ease: 'easeOut' } }}
+                    className="group glass relative overflow-hidden rounded-2xl cursor-default"
                   >
-                    <div className={`mb-4 inline-flex h-11 w-11 items-center justify-center rounded-xl ${item.bg}`}>
-                      <item.icon className={`h-5 w-5 ${item.color}`} />
+                    {/* Top gradient stripe — always present, brightens on hover */}
+                    <div className={`absolute inset-x-0 top-0 h-[2px] rounded-t-2xl bg-gradient-to-r ${group.gradient} opacity-40 transition-opacity duration-300 group-hover:opacity-100`} />
+                    {/* Hover background bloom */}
+                    <div className={`pointer-events-none absolute inset-0 bg-gradient-to-br ${group.gradient} opacity-0 transition-opacity duration-500 group-hover:opacity-[0.07] rounded-2xl`} />
+                    {/* Hover ring brightness */}
+                    <div className="absolute inset-0 rounded-2xl ring-1 ring-inset ring-white/[0.07] transition-all duration-300 group-hover:ring-white/[0.2]" />
+                    {/* Card content */}
+                    <div className="relative z-10 p-7 sm:p-8">
+                      <div className={`mb-5 inline-flex h-12 w-12 items-center justify-center rounded-xl ${item.bg} transition-transform duration-300 group-hover:scale-110`}>
+                        <item.icon className={`h-5 w-5 ${item.color}`} />
+                      </div>
+                      <h3 className="mb-3 text-base font-bold text-white sm:text-lg">{item.title}</h3>
+                      <p className="text-sm leading-relaxed text-white/50 transition-colors duration-300 group-hover:text-white/80">{item.desc}</p>
                     </div>
-                    <h3 className="mb-2 text-sm font-semibold text-white sm:text-base">{item.title}</h3>
-                    <p className="text-xs leading-relaxed text-[var(--color-text-muted)] sm:text-sm">{item.desc}</p>
                   </motion.div>
                 ))}
               </div>
@@ -211,7 +221,7 @@ export default function FeaturesPage() {
               whileInView={{ opacity: 1, y: 0, scale: 1 }}
               viewport={{ once: true, amount: 0.4 }}
               transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-              className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[var(--color-primary)]/20 via-transparent to-[var(--color-secondary)]/10 border border-[var(--color-primary)]/20 p-10 sm:p-14"
+              className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[var(--color-primary)]/20 via-transparent to-[var(--color-secondary)]/10 border border-[var(--color-primary)]/20 p-6 sm:p-10 md:p-14"
             >
               <div className="pointer-events-none absolute -top-20 -right-20 h-48 w-48 rounded-full bg-[var(--color-primary)] opacity-[0.12] blur-[60px]" />
               <div className="pointer-events-none absolute -bottom-16 -left-16 h-40 w-40 rounded-full bg-[var(--color-secondary)] opacity-[0.1] blur-[50px]" />

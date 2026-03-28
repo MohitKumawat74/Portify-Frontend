@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/hooks/useAuth';
 import { usePortfolio } from '@/hooks/usePortfolio';
+import { usePortfolioStore } from '@/store/portfolioStore';
 import { useAuthStore } from '@/store/authStore';
 import { portfolioService } from '@/services/portfolioService';
 import { Button } from '@/components/ui/Button';
@@ -13,6 +14,7 @@ import { StatCardSkeleton, CardSkeleton } from '@/components/dashboard/Skeleton'
 import { ROUTES } from '@/utils/constants';
 import { formatDate } from '@/utils/helpers';
 import { cn } from '@/utils/cn';
+import { MOCK_PORTFOLIOS, MOCK_PORTFOLIO_ANALYTICS } from '@/data/mockUser';
 import {
   FolderOpen,
   Globe,
@@ -30,19 +32,36 @@ import {
   CreditCard,
 } from 'lucide-react';
 
+/** Flip to false when connecting to the real API */
+const USE_MOCK = true;
+
 export default function DashboardPage() {
   const { user } = useAuth();
   const { token } = useAuthStore();
   const { portfolios, fetchPortfolios, isLoading } = usePortfolio();
+  const { setPortfolios, setLoading } = usePortfolioStore();
   const [totalViews, setTotalViews] = useState<number | null>(null);
   const [viewsLoading, setViewsLoading] = useState(false);
 
   useEffect(() => {
+    if (USE_MOCK) {
+      setPortfolios(MOCK_PORTFOLIOS);
+      setLoading(false);
+      return;
+    }
     fetchPortfolios();
-  }, [fetchPortfolios]);
+  }, [fetchPortfolios, setPortfolios, setLoading]);
 
   // Aggregate total views across all published portfolios
   useEffect(() => {
+    if (USE_MOCK) {
+      const total = Object.values(MOCK_PORTFOLIO_ANALYTICS).reduce(
+        (sum, a) => sum + a.totalViews,
+        0,
+      );
+      setTotalViews(total);
+      return;
+    }
     const published = portfolios.filter((p) => p.isPublished);
     if (!token || published.length === 0) {
       setTotalViews(0);

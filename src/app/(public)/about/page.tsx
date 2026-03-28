@@ -141,7 +141,7 @@ export default function AboutPage() {
             >
               The team
             </motion.h2>
-            <div className="grid gap-5 sm:gap-6 md:grid-cols-3">
+            <div className="grid gap-5 sm:grid-cols-2 sm:gap-6 md:grid-cols-3">
               {TEAM.map((member, i) => (
                 <motion.div
                   key={member.name}
@@ -179,7 +179,7 @@ export default function AboutPage() {
               Our journey
             </motion.h2>
             <div className="relative space-y-7 sm:space-y-8">
-              <div className="absolute left-2 top-0 h-full w-px bg-gradient-to-b from-[var(--color-primary)] via-[var(--color-secondary)] to-transparent sm:left-[72px]" />
+              <div className="absolute left-[5px] top-0 h-full w-px bg-gradient-to-b from-[var(--color-primary)] via-[var(--color-secondary)] to-transparent sm:left-[72px]" />
               {MILESTONES.map((m, i) => (
                 <motion.div
                   key={m.year}
@@ -187,12 +187,12 @@ export default function AboutPage() {
                   whileInView={{ opacity: 1, x: 0 }}
                   viewport={{ once: true, amount: 0.6 }}
                   transition={{ duration: 0.5, delay: i * 0.1 }}
-                  className="flex items-start gap-3 sm:gap-6"
+                  className="flex items-start gap-3 pl-5 sm:gap-6 sm:pl-0"
                 >
-                  <div className="w-16 flex-shrink-0 text-left sm:w-[72px] sm:text-right">
-                    <span className="text-[11px] font-bold text-[var(--color-primary)] sm:text-xs">{m.year}</span>
+                  <div className="hidden flex-shrink-0 w-[72px] text-right sm:block">
+                    <span className="text-xs font-bold text-[var(--color-primary)]">{m.year}</span>
                   </div>
-                  <div className="relative flex-shrink-0">
+                  <div className="relative -ml-5 flex-shrink-0 sm:ml-0">
                     <motion.div
                       className="relative z-10 mt-0.5 h-2.5 w-2.5 rounded-full bg-[var(--color-primary)] ring-4 ring-[var(--color-bg)] sm:h-3 sm:w-3"
                       initial={{ scale: 0 }}
@@ -201,7 +201,10 @@ export default function AboutPage() {
                       transition={{ duration: 0.3, delay: i * 0.1 + 0.2 }}
                     />
                   </div>
-                  <p className="flex-1 pb-2 text-xs leading-relaxed text-[var(--color-text-muted)] sm:text-sm">{m.event}</p>
+                  <div className="flex-1 pb-2">
+                    <span className="mb-0.5 block text-[10px] font-bold text-[var(--color-primary)] sm:hidden">{m.year}</span>
+                    <p className="text-xs leading-relaxed text-[var(--color-text-muted)] sm:text-sm">{m.event}</p>
+                  </div>
                 </motion.div>
               ))}
             </div>
@@ -216,7 +219,7 @@ export default function AboutPage() {
               whileInView={{ opacity: 1, y: 0, scale: 1 }}
               viewport={{ once: true, amount: 0.4 }}
               transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-              className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[var(--color-primary)]/15 via-transparent to-[var(--color-secondary)]/10 border border-white/[0.07] p-10 sm:p-14"
+              className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[var(--color-primary)]/15 via-transparent to-[var(--color-secondary)]/10 border border-white/[0.07] p-6 sm:p-10 md:p-14"
             >
               <div className="pointer-events-none absolute -top-16 -right-16 h-40 w-40 rounded-full bg-[var(--color-primary)] opacity-[0.1] blur-[50px]" />
               <div className="relative z-10">

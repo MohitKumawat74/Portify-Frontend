@@ -11,15 +11,10 @@ import { adminService } from '@/services/adminService';
 import { useAuthStore } from '@/store/authStore';
 import { toast } from '@/store/toastStore';
 import type { Analytics } from '@/types';
+import { MOCK_ADMIN_ANALYTICS, MOCK_ADMIN_RECENT_ACTIVITY } from '@/data/mockAdmin';
 
-// Recent activity is a placeholder — no dedicated API endpoint exists yet
-const recentActivity = [
-  { user: 'alice@example.com', action: 'Published portfolio', time: '2 min ago',  color: 'bg-emerald-500' },
-  { user: 'bob@example.com',   action: 'Created portfolio',   time: '14 min ago', color: 'bg-blue-500' },
-  { user: 'carol@example.com', action: 'Registered',          time: '1 hr ago',   color: 'bg-violet-500' },
-  { user: 'david@example.com', action: 'Changed template',    time: '2 hr ago',   color: 'bg-amber-500' },
-  { user: 'eve@example.com',   action: 'Published portfolio', time: '3 hr ago',   color: 'bg-emerald-500' },
-];
+/** Flip to false when connecting to the real API */
+const USE_MOCK = true;
 
 const shortcuts = [
   { label: 'Manage Users',     href: ROUTES.ADMIN_USERS,     icon: <Users      size={16} />, color: 'from-violet-600 to-purple-600' },
@@ -33,6 +28,11 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (USE_MOCK) {
+      setAnalytics(MOCK_ADMIN_ANALYTICS);
+      setLoading(false);
+      return;
+    }
     if (!token) return;
     adminService
       .getAnalytics(token)
@@ -120,7 +120,7 @@ export default function AdminPage() {
             actions={<Activity size={15} className="text-[var(--color-text-muted)]" />}
           >
             <ul className="divide-y divide-[var(--color-border)]">
-              {recentActivity.map((a, i) => (
+              {(USE_MOCK ? MOCK_ADMIN_RECENT_ACTIVITY : MOCK_ADMIN_RECENT_ACTIVITY).map((a, i) => (
                 <li key={i} className="flex items-center gap-3 py-3">
                   <span className={`h-2 w-2 shrink-0 rounded-full ${a.color}`} />
                   <div className="min-w-0 flex-1">
