@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { useState, useRef, type FormEvent, type ChangeEvent } from 'react';
+import { useEffect, useState, useRef, type FormEvent, type ChangeEvent } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useAuthStore } from '@/store/authStore';
 import { userService } from '@/services/userService';
@@ -49,6 +49,27 @@ export default function SettingsPage() {
   // Danger zone
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
+
+  useEffect(() => {
+    if (!token || !user?.id) return;
+
+    userService.getById(user.id, token)
+      .then((res) => {
+        const nextUser = res.data;
+        setProfileForm({ name: nextUser.name ?? '' });
+        setAvatarPreview(nextUser.avatar ?? null);
+        updateUser({
+          name: nextUser.name,
+          email: nextUser.email,
+          role: nextUser.role,
+          avatar: nextUser.avatar,
+          subscription: nextUser.subscription,
+        });
+      })
+      .catch(() => {
+        // Keep local store data when profile refresh fails.
+      });
+  }, [token, user?.id, updateUser]);
 
   async function handleProfileSubmit(e: FormEvent) {
     e.preventDefault();

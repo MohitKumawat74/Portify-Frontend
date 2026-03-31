@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Navbar } from '@/components/layout/Navbar';
 import { Footer } from '@/components/layout/Footer';
@@ -8,65 +8,24 @@ import { Container } from '@/components/layout/Container';
 import Link from 'next/link';
 import { Button } from '@/components/ui/Button';
 import { UpgradeModal } from '@/components/dashboard/UpgradeModal';
+import { planService } from '@/services/planService';
 import { useAuthStore } from '@/store/authStore';
+import { toast } from '@/store/toastStore';
 import { ROUTES } from '@/utils/constants';
+import type { Plan } from '@/types';
 import { CheckCircle, Zap, Sparkles } from 'lucide-react';
 
-const PLANS = [
-  {
-    name: 'Free',
-    price: 0,
-    period: 'forever',
-    description: 'Everything you need to get started and get noticed.',
-    color: 'border-white/[0.08]',
-    cta: { label: 'Start for free', href: ROUTES.REGISTER, variant: 'outline' as const },
-    features: [
-      '3 portfolio templates',
-      'Custom slug URL',
-      '5 projects showcase',
-      'Skills section',
-      'Mobile responsive',
-      'Basic analytics',
-    ],
-  },
-  {
-    name: 'Pro',
-    price: 9,
-    period: '/ month',
-    description: 'For serious developers who want every edge over the competition.',
-    color: 'border-[var(--color-primary)]/50',
-    highlight: true,
-    badge: 'Most Popular',
-    cta: { label: 'Get Pro — $9/mo', href: ROUTES.REGISTER, variant: 'glow' as const },
-    features: [
-      'All 50+ premium templates',
-      'Custom domain (coming soon)',
-      'Unlimited projects',
-      '3D skill visualisations',
-      'Advanced analytics',
-      'Priority support',
-      'SEO optimisation',
-      'PDF export',
-      'Remove branding',
-    ],
-  },
-  {
-    name: 'Team',
-    price: 29,
-    period: '/ month',
-    description: 'For recruitment agencies and teams managing multiple portfolios.',
-    color: 'border-white/[0.08]',
-    cta: { label: 'Contact sales', href: ROUTES.ABOUT_PAGE, variant: 'outline' as const },
-    features: [
-      'Everything in Pro',
-      'Up to 10 team members',
-      'Centralised billing',
-      'SSO (coming soon)',
-      'Dedicated support',
-      'Custom templates',
-    ],
-  },
-];
+interface PlanCardModel {
+  id: string;
+  name: string;
+  description: string;
+  price: number;
+  periodLabel: string;
+  features: string[];
+  color: string;
+  highlight: boolean;
+  badge?: string;
+}
 
 const FAQ = [
   { q: 'Is the free plan really free forever?', a: 'Yes. No credit card, no time limit — the free plan is free forever. Upgrade when you need more power.' },
@@ -79,19 +38,77 @@ export default function PricingPage() {
   const [annual, setAnnual] = useState(false);
   const [openFaq, setOpenFaq] = useState<number | null>(null);
   const [upgradeOpen, setUpgradeOpen] = useState(false);
+  const [plans, setPlans] = useState<Plan[]>([]);
+  const [plansLoading, setPlansLoading] = useState(true);
   const { isAuthenticated, planId } = useAuthStore();
 
-  const getPrice = (base: number) => (base === 0 ? 0 : annual ? Math.round(base * 0.8) : base);
-  const isOnProPlan = planId === 'plan_pro' || planId === 'plan_team';
+  useEffect(() => {
+    let mounted = true;
 
-  const renderCta = (plan: (typeof PLANS)[number]) => {
-    const isProPlanCard = plan.name === 'Pro';
+    planService.getPlans()
+      .then((res) => {
+        if (!mounted) return;
+        setPlans((res.data ?? []).filter((plan) => plan.isActive));
+      })
+      .catch(() => {
+        if (!mounted) return;
+        toast.error('Failed to load pricing plans.');
+      })
+      .finally(() => {
+        if (!mounted) return;
+        setPlansLoading(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const planCards = useMemo<PlanCardModel[]>(() => {
+    return plans.map((plan) => {
+      const normalizedName = plan.name.trim().toLowerCase();
+      const isFree = normalizedName.includes('free') || plan.price <= 0;
+      const isPro = normalizedName.includes('pro') || plan.id === 'plan_pro';
+
+      return {
+        id: plan.id,
+        name: plan.name,
+        description: plan.description || (isPro
+          ? 'For serious developers who want every edge over the competition.'
+          : 'Everything you need to build and share your portfolio.'),
+        price: plan.price,
+        periodLabel: isFree ? 'forever' : `/ ${plan.billingPeriod || 'month'}`,
+        features: plan.features,
+        color: isPro ? 'border-[var(--color-primary)]/50' : 'border-white/[0.08]',
+        highlight: isPro || plan.isPopular,
+        badge: isPro || plan.isPopular ? 'Most Popular' : undefined,
+      };
+    });
+  }, [plans]);
+
+  const getPrice = (base: number) => (base <= 0 ? 0 : annual ? Math.round(base * 0.8) : base);
+  const isOnPaidPlan = planId === 'plan_pro' || planId === 'plan_team';
+
+  const renderCta = (plan: PlanCardModel) => {
+    const normalizedName = plan.name.trim().toLowerCase();
+    const isFree = normalizedName.includes('free') || plan.price <= 0;
+    const isProPlanCard = normalizedName.includes('pro') || plan.id === 'plan_pro';
+
+    if (isFree) {
+      return (
+        <Link href={isAuthenticated ? ROUTES.DASHBOARD : ROUTES.REGISTER}>
+          <Button variant="outline" size="lg" className="w-full">
+            {isAuthenticated ? 'Go to dashboard' : 'Start for free'}
+          </Button>
+        </Link>
+      );
+    }
 
     if (!isProPlanCard) {
       return (
-        <Link href={plan.cta.href}>
-          <Button variant={plan.cta.variant} size="lg" className="w-full">
-            {plan.cta.label}
+        <Link href={ROUTES.ABOUT_PAGE}>
+          <Button variant="outline" size="lg" className="w-full">
+            Contact sales
           </Button>
         </Link>
       );
@@ -100,14 +117,14 @@ export default function PricingPage() {
     if (!isAuthenticated) {
       return (
         <Link href={ROUTES.LOGIN}>
-          <Button variant={plan.cta.variant} size="lg" className="w-full">
+          <Button variant="glow" size="lg" className="w-full">
             Log in to upgrade
           </Button>
         </Link>
       );
     }
 
-    if (isOnProPlan) {
+    if (isOnPaidPlan) {
       return (
         <Link href={ROUTES.DASHBOARD}>
           <Button variant="outline" size="lg" className="w-full">
@@ -194,10 +211,21 @@ export default function PricingPage() {
         {/* Plans */}
         <section className="pb-12 sm:pb-16 md:pb-24">
           <Container maxWidth="lg">
-            <div className="grid gap-5 sm:gap-6 md:grid-cols-3">
-              {PLANS.map((plan, i) => (
+            {plansLoading ? (
+              <div className="grid gap-5 sm:gap-6 md:grid-cols-3">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <div key={i} className="h-[460px] animate-pulse rounded-2xl border border-white/[0.08] bg-white/[0.02]" />
+                ))}
+              </div>
+            ) : planCards.length === 0 ? (
+              <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-8 text-center text-sm text-[var(--color-text-muted)]">
+                Pricing plans are currently unavailable. Please try again shortly.
+              </div>
+            ) : (
+              <div className="grid gap-5 sm:gap-6 md:grid-cols-3">
+                {planCards.map((plan, i) => (
                 <motion.div
-                  key={plan.name}
+                  key={plan.id}
                   initial={{ opacity: 0, y: 50, scale: 0.97 }}
                   whileInView={{ opacity: 1, y: 0, scale: 1 }}
                   viewport={{ once: true, amount: 0.2 }}
@@ -218,7 +246,7 @@ export default function PricingPage() {
                     <div className="flex items-end gap-1">
                       <AnimatePresence mode="wait">
                         <motion.span
-                          key={`${plan.name}-${annual}`}
+                          key={`${plan.id}-${annual}`}
                           className="font-space-grotesk text-4xl font-extrabold text-white sm:text-5xl"
                           initial={{ opacity: 0, y: -10 }}
                           animate={{ opacity: 1, y: 0 }}
@@ -229,7 +257,7 @@ export default function PricingPage() {
                         </motion.span>
                       </AnimatePresence>
                       {plan.price > 0 && (
-                        <span className="mb-2 text-sm text-[var(--color-text-muted)]">{plan.period}</span>
+                        <span className="mb-2 text-sm text-[var(--color-text-muted)]">{plan.periodLabel}</span>
                       )}
                     </div>
                     {annual && plan.price > 0 && (
@@ -244,7 +272,7 @@ export default function PricingPage() {
                   </div>
                   <ul className="mb-8 flex-1 space-y-3">
                     {plan.features.map((f) => (
-                      <li key={f} className="flex items-start gap-2.5 text-sm text-[var(--color-text-muted)]">
+                      <li key={`${plan.id}-${f}`} className="flex items-start gap-2.5 text-sm text-[var(--color-text-muted)]">
                         <CheckCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-emerald-400" />
                         {f}
                       </li>
@@ -252,8 +280,9 @@ export default function PricingPage() {
                   </ul>
                   {renderCta(plan)}
                 </motion.div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
 
             {/* Annual discount note */}
             <motion.div

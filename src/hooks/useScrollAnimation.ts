@@ -88,27 +88,40 @@ export function useScrollAnimation<T extends HTMLElement = HTMLDivElement>(
  */
 export function useScrollAnimationGroup<T extends HTMLElement = HTMLDivElement>(
   selector: string,
-  options: ScrollAnimationOptions & { staggerMs?: number } = {},
+  options: ScrollAnimationOptions & { staggerMs?: number; refreshKey?: unknown } = {},
 ) {
-  const { staggerMs = 80, once = true, threshold = 0.1, rootMargin = '-40px' } = options;
+  const { staggerMs = 80, once = true, threshold = 0.1, rootMargin = '-40px', refreshKey } = options;
   const containerRef = useRef<T>(null);
 
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
-    const items = Array.from(container.querySelectorAll<HTMLElement>(selector));
+    const revealItems = () => {
+      const items = Array.from(container.querySelectorAll<HTMLElement>(selector));
+      items.forEach((item, i) => {
+        setTimeout(() => {
+          item.classList.add('gsap-reveal-in');
+          item.classList.remove('gsap-reveal-hidden');
+        }, i * staggerMs);
+      });
+    };
+
+    const isInViewport = () => {
+      const rect = container.getBoundingClientRect();
+      return rect.top < window.innerHeight && rect.bottom > 0;
+    };
+
+    // If content is added while already in viewport, reveal immediately.
+    if (isInViewport()) {
+      revealItems();
+    }
 
     const observer = new IntersectionObserver(
       entries => {
         entries.forEach(entry => {
           if (entry.isIntersecting) {
-            items.forEach((item, i) => {
-              setTimeout(() => {
-                item.classList.add('gsap-reveal-in');
-                item.classList.remove('gsap-reveal-hidden');
-              }, i * staggerMs);
-            });
+            revealItems();
             if (once) observer.disconnect();
           }
         });
@@ -118,7 +131,7 @@ export function useScrollAnimationGroup<T extends HTMLElement = HTMLDivElement>(
 
     observer.observe(container);
     return () => observer.disconnect();
-  }, [selector, staggerMs, once, threshold, rootMargin]);
+  }, [selector, staggerMs, once, threshold, rootMargin, refreshKey]);
 
   return containerRef;
 }

@@ -38,6 +38,8 @@ interface RefreshResponse {
   user?: User;
 }
 
+type AuthUserWire = Partial<User> & { _id?: string };
+
 export interface ForgotPasswordPayload {
   email: string;
 }
@@ -51,9 +53,21 @@ function resolveToken(data: { token?: string; accessToken?: string }): string {
   return data.token ?? data.accessToken ?? '';
 }
 
+function normalizeAuthUser(user: AuthUserWire): User {
+  return {
+    id: user.id ?? user._id ?? '',
+    name: user.name ?? 'User',
+    email: user.email ?? '',
+    role: user.role === 'admin' ? 'admin' : 'user',
+    createdAt: user.createdAt ?? new Date().toISOString(),
+    avatar: user.avatar,
+    subscription: user.subscription,
+  };
+}
+
 export const authService = {
   login: async (payload: LoginPayload) => {
-    const response = await api.post<ApiResponse<AuthResponseWire>>('/auth/login', payload);
+    const response = await api.post<ApiResponse<AuthResponseWire & { user: AuthUserWire }>>('/auth/login', payload);
     if (!response.success || !response.data) {
       return response as ApiResponse<AuthResponse>;
     }
@@ -61,7 +75,7 @@ export const authService = {
     return {
       ...response,
       data: {
-        user: response.data.user,
+        user: normalizeAuthUser(response.data.user),
         token: resolveToken(response.data),
         refreshToken: response.data.refreshToken,
       },
@@ -69,7 +83,7 @@ export const authService = {
   },
 
   register: async (payload: RegisterPayload) => {
-    const response = await api.post<ApiResponse<AuthResponseWire>>('/auth/register', payload);
+    const response = await api.post<ApiResponse<AuthResponseWire & { user: AuthUserWire }>>('/auth/register', payload);
     if (!response.success || !response.data) {
       return response as ApiResponse<AuthResponse>;
     }
@@ -77,7 +91,7 @@ export const authService = {
     return {
       ...response,
       data: {
-        user: response.data.user,
+        user: normalizeAuthUser(response.data.user),
         token: resolveToken(response.data),
         refreshToken: response.data.refreshToken,
       },
@@ -87,11 +101,20 @@ export const authService = {
   logout: (token: string, refreshToken: string) =>
     api.post<ApiResponse<null>>('/auth/logout', { refreshToken }, token),
 
-  getProfile: (token: string) =>
-    api.get<ApiResponse<User>>('/auth/profile', token),
+  getProfile: async (token: string) => {
+    const response = await api.get<ApiResponse<AuthUserWire>>('/auth/profile', token);
+    if (!response.success || !response.data) {
+      return response as ApiResponse<User>;
+    }
+
+    return {
+      ...response,
+      data: normalizeAuthUser(response.data),
+    };
+  },
 
   refreshToken: async (refreshToken: string) => {
-    const response = await api.post<ApiResponse<RefreshResponseWire>>('/auth/refresh', { refreshToken });
+    const response = await api.post<ApiResponse<RefreshResponseWire & { user?: AuthUserWire }>>('/auth/refresh', { refreshToken });
     if (!response.success || !response.data) {
       return response as ApiResponse<RefreshResponse>;
     }
@@ -101,7 +124,7 @@ export const authService = {
       data: {
         token: resolveToken(response.data),
         refreshToken: response.data.refreshToken,
-        user: response.data.user,
+        user: response.data.user ? normalizeAuthUser(response.data.user) : undefined,
       },
     };
   },

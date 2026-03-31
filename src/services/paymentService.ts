@@ -3,8 +3,9 @@ import type { ApiResponse } from '@/types';
 import type { RazorpayCheckoutSuccessResponse } from '@/types/razorpay';
 
 export interface CreateOrderPayload {
-  planId: string;
-  billingCycle?: 'monthly' | 'annual';
+  planId: 'plan_pro';
+  billingCycle?: 'monthly' | 'month';
+  clientRequestId?: string;
 }
 
 export interface RazorpayOrder {

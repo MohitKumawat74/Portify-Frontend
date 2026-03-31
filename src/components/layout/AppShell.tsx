@@ -9,9 +9,13 @@ import { Navbar } from '@/components/layout/Navbar';
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const isDashboardRoute = pathname.startsWith('/dashboard') || pathname.startsWith('/admin');
+  const isStandaloneTemplateRoute =
+    pathname.startsWith('/preview') ||
+    pathname.startsWith('/templates/preview') ||
+    pathname.startsWith('/portfolio/');
 
   // Dashboard/admin layouts manage their own navbar/scroll containers.
-  if (isDashboardRoute) {
+  if (isDashboardRoute || isStandaloneTemplateRoute) {
     return <>{children}</>;
   }
 

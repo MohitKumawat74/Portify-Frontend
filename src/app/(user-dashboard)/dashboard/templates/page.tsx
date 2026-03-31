@@ -18,17 +18,35 @@ import { ROUTES } from '@/utils/constants';
 import { isTemplateLockedForPlan } from '@/utils/plan';
 import { useScrollAnimationGroup } from '@/hooks/useScrollAnimation';
 
-const TEMPLATE_GRADIENTS: Record<string, string> = {
-  template1: 'from-violet-600 to-indigo-600',
-  template2: 'from-slate-700 to-gray-800',
-  template3: 'from-blue-600 to-cyan-600',
+const GRADIENTS = [
+  'from-violet-600 to-indigo-600',
+  'from-slate-700 to-gray-800',
+  'from-blue-600 to-cyan-600',
+  'from-emerald-600 to-teal-600',
+  'from-rose-600 to-orange-500',
+  'from-fuchsia-600 to-purple-600',
+];
+
+const EMOJI_BY_CATEGORY: Record<string, string> = {
+  minimal: '🎨',
+  creative: '🌙',
+  professional: '💼',
+  immersive: '🚀',
+  developer: '🧠',
 };
 
-const TEMPLATE_EMOJIS: Record<string, string> = {
-  template1: '🎨',
-  template2: '🌙',
-  template3: '💼',
-};
+function visualIndex(id: string): number {
+  return id.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+}
+
+function getTemplateGradient(template: Template): string {
+  return GRADIENTS[visualIndex(template.id) % GRADIENTS.length];
+}
+
+function getTemplateEmoji(template: Template): string {
+  const categoryKey = (template.category || '').toLowerCase();
+  return EMOJI_BY_CATEGORY[categoryKey] ?? '✨';
+}
 
 const CATEGORY_LABELS: Record<string, string> = {
   all: 'All',
@@ -47,7 +65,12 @@ export default function TemplatesPage() {
   const [category, setCategory] = useState<string>('all');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [upgradeOpen, setUpgradeOpen] = useState(false);
-  const gridRevealRef = useScrollAnimationGroup('.template-item', { staggerMs: 70, once: false, threshold: 0.08 });
+  const gridRevealRef = useScrollAnimationGroup('.template-item', {
+    staggerMs: 70,
+    once: false,
+    threshold: 0.08,
+    refreshKey: `${viewMode}:${category}:${search}:${templates.length}`,
+  });
 
   useEffect(() => {
     templateService.getAll(1, 50)
@@ -241,8 +264,9 @@ function TemplateCard({
   selected: boolean;
   onSelect: () => void;
 }) {
-  const gradient = TEMPLATE_GRADIENTS[t.id] ?? 'from-violet-600 to-purple-600';
-  const emoji = TEMPLATE_EMOJIS[t.id] ?? '✨';
+  const gradient = getTemplateGradient(t);
+  const emoji = getTemplateEmoji(t);
+  const previewSrc = t.previewImage || t.thumbnail;
 
   return (
     <motion.button
@@ -292,7 +316,12 @@ function TemplateCard({
       )}
 
       <div className={cn('relative flex h-40 items-center justify-center overflow-hidden bg-gradient-to-br', gradient)}>
-        <span className="text-5xl drop-shadow-lg">{emoji}</span>
+        {previewSrc ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={previewSrc} alt={`${t.name} preview`} className="h-full w-full object-cover" />
+        ) : (
+          <span className="text-5xl drop-shadow-lg">{emoji}</span>
+        )}
         <div className="absolute inset-0 bg-black/0 transition-colors group-hover:bg-black/10" />
       </div>
 
@@ -308,6 +337,11 @@ function TemplateCard({
           <span className={cn('text-xs font-semibold', t.isPremium ? 'text-amber-400' : 'text-emerald-400')}>
             {t.isPremium ? '⚡ Premium' : '✓ Free'}
           </span>
+          {t.defaultTheme?.fontFamily ? (
+            <span className="rounded-full bg-white/5 px-2 py-0.5 text-[10px] text-[var(--color-text-muted)]">
+              {t.defaultTheme.fontFamily}
+            </span>
+          ) : null}
           <span className={cn(
             'text-[10px] font-medium transition-colors',
             selected ? 'text-[var(--color-primary)]' : 'text-transparent group-hover:text-[var(--color-text-muted)]',
@@ -331,8 +365,9 @@ function TemplateListItem({
   selected: boolean;
   onSelect: () => void;
 }) {
-  const gradient = TEMPLATE_GRADIENTS[t.id] ?? 'from-violet-600 to-purple-600';
-  const emoji = TEMPLATE_EMOJIS[t.id] ?? '✨';
+  const gradient = getTemplateGradient(t);
+  const emoji = getTemplateEmoji(t);
+  const previewSrc = t.previewImage || t.thumbnail;
 
   return (
     <motion.button
@@ -350,8 +385,13 @@ function TemplateListItem({
           : 'border-[var(--color-border)] bg-[var(--color-bg-card)] hover:border-[var(--color-primary)]/30',
       )}
     >
-      <div className={cn('flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br text-2xl', gradient)}>
-        {emoji}
+      <div className={cn('flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br text-2xl', gradient)}>
+        {previewSrc ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={previewSrc} alt={`${t.name} preview`} className="h-full w-full object-cover" />
+        ) : (
+          emoji
+        )}
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">

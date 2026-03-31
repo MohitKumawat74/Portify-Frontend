@@ -19,7 +19,7 @@ import { cn } from '@/utils/cn';
 import { canCreateByUsage } from '@/utils/plan';
 import {
   FolderOpen, PlusCircle, Pencil, Trash2, ExternalLink,
-  Search, Globe, EyeOff, ChevronDown, Filter, BarChart3,
+  Search, Globe, EyeOff, ChevronDown, Filter, BarChart3, WandSparkles,
 } from 'lucide-react';
 
 type Filter = 'all' | 'published' | 'draft';
@@ -34,7 +34,23 @@ const TEMPLATE_NAMES: Record<string, string> = {
   template1: 'Modern Minimal',
   template2: 'Dark Creative',
   template3: 'Professional',
+  template4: 'Immersive Studio',
 };
+
+function visualIndex(id: string): number {
+  return id.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+}
+
+function fallbackGradient(templateId: string): string {
+  const gradients = [
+    'from-violet-500 to-purple-500',
+    'from-slate-600 to-gray-500',
+    'from-blue-500 to-cyan-500',
+    'from-emerald-600 to-teal-600',
+    'from-rose-600 to-orange-500',
+  ];
+  return gradients[visualIndex(templateId || 'template1') % gradients.length];
+}
 
 export default function PortfoliosPage() {
   const router = useRouter();
@@ -63,7 +79,11 @@ export default function PortfoliosPage() {
 
   const filtered = portfolios
     .filter((p) => {
-      const matchSearch = p.title.toLowerCase().includes(search.toLowerCase()) || p.slug.includes(search.toLowerCase());
+      const query = search.toLowerCase();
+      const matchSearch =
+        p.title.toLowerCase().includes(query) ||
+        p.slug.toLowerCase().includes(query) ||
+        (p.username ?? '').toLowerCase().includes(query);
       const matchFilter = filter === 'all' || (filter === 'published' ? p.isPublished : !p.isPublished);
       return matchSearch && matchFilter;
     })
@@ -122,23 +142,35 @@ export default function PortfoliosPage() {
             : 'Create and manage your portfolios'
         }
         actions={
-          <Button
-            size="sm"
-            className="gap-1.5"
-            disabled={!canCreatePortfolio}
-            onClick={() => {
-              if (canCreatePortfolio) {
-                router.push(ROUTES.CREATE_PORTFOLIO);
-                return;
-              }
-              setUpgradeOpen(true);
-            }}
-            title={!canCreatePortfolio ? 'Limit reached. Upgrade to Pro' : undefined}
-          >
-              <PlusCircle size={14} />
-              <span className="hidden sm:inline">New Portfolio</span>
-              <span className="sm:hidden">New</span>
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              variant="ghost"
+              className="gap-1.5"
+              onClick={() => router.push(ROUTES.PORTFOLIO_BUILDER)}
+            >
+              <WandSparkles size={14} />
+              <span className="hidden sm:inline">Visual Builder</span>
+              <span className="sm:hidden">Builder</span>
+            </Button>
+            <Button
+              size="sm"
+              className="gap-1.5"
+              disabled={!canCreatePortfolio}
+              onClick={() => {
+                if (canCreatePortfolio) {
+                  router.push(ROUTES.CREATE_PORTFOLIO);
+                  return;
+                }
+                setUpgradeOpen(true);
+              }}
+              title={!canCreatePortfolio ? 'Limit reached. Upgrade to Pro' : undefined}
+            >
+                <PlusCircle size={14} />
+                <span className="hidden sm:inline">New Portfolio</span>
+                <span className="sm:hidden">New</span>
+            </Button>
+          </div>
         }
       />
 
@@ -179,7 +211,7 @@ export default function PortfoliosPage() {
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)]" />
           <input
             type="text"
-            placeholder="Search by title or slug…"
+            placeholder="Search by title, slug, or username…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-card)] py-2.5 pl-9 pr-4 text-sm text-[var(--color-text)] placeholder:text-[var(--color-text-muted)] outline-none focus:border-[var(--color-primary)]/60 focus:ring-2 focus:ring-[var(--color-primary)]/20 transition-all"
@@ -238,8 +270,10 @@ export default function PortfoliosPage() {
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {filtered.map((p) => {
-            const gradient = TEMPLATE_GRADIENTS[p.templateId] ?? 'from-violet-500 to-purple-500';
-            const templateName = TEMPLATE_NAMES[p.templateId] ?? p.templateId;
+            const templateId = typeof p.templateId === 'string' ? p.templateId : 'template1';
+            const gradient = TEMPLATE_GRADIENTS[templateId] ?? fallbackGradient(templateId);
+            const templateName = p.templateName ?? TEMPLATE_NAMES[templateId] ?? templateId;
+            const publicPath = p.username || p.slug;
             return (
               <div
                 key={p.id}
@@ -293,7 +327,7 @@ export default function PortfoliosPage() {
 
                     {p.isPublished && (
                       <>
-                        <Link href={`/portfolio/${p.slug}`} target="_blank">
+                        <Link href={`/portfolio/${publicPath}`} target="_blank">
                           <Button variant="ghost" size="sm" className="gap-1 h-7 text-xs">
                             <ExternalLink size={11} /> View
                           </Button>
