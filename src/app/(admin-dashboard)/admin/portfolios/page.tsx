@@ -42,7 +42,8 @@ export default function AdminPortfoliosPage() {
     ? portfolios.filter(
         (p) =>
           p.title.toLowerCase().includes(query.toLowerCase()) ||
-          p.slug.toLowerCase().includes(query.toLowerCase()),
+          p.slug.toLowerCase().includes(query.toLowerCase()) ||
+          (p.username ?? '').toLowerCase().includes(query.toLowerCase()),
       )
     : portfolios;
 
@@ -93,7 +94,7 @@ export default function AdminPortfoliosPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && setQuery(search)}
-            placeholder="Search by title or slug…"
+            placeholder="Search by title, slug, or username…"
             className="w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-card)] py-2 pl-9 pr-3 text-sm text-[var(--color-text)] outline-none transition-colors placeholder:text-[var(--color-text-muted)] focus:border-[var(--color-primary)]"
           />
         </div>
@@ -140,7 +141,7 @@ export default function AdminPortfoliosPage() {
                   <tr key={p.id} className="transition-colors hover:bg-white/[0.02]">
                     <td className="py-3 font-medium text-[var(--color-text)]">{p.title}</td>
                     <td className="py-3 font-mono text-xs text-[var(--color-text-muted)]">{p.slug}</td>
-                    <td className="py-3 text-xs text-[var(--color-text-muted)]">{p.templateId}</td>
+                    <td className="py-3 text-xs text-[var(--color-text-muted)]">{p.templateName ?? p.templateId}</td>
                     <td className="py-3">
                       <span
                         className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${

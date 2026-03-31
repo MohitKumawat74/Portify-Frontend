@@ -362,7 +362,7 @@ export default function DashboardPage() {
                         </Button>
                       </Link>
                       {p.isPublished && (
-                        <Link href={`/portfolio/${p.slug}`} target="_blank">
+                        <Link href={`/portfolio/${p.username || p.slug}`} target="_blank">
                           <Button variant="ghost" size="sm" className="gap-1 h-7 text-xs px-2.5">
                             <ExternalLink size={11} /> View
                           </Button>

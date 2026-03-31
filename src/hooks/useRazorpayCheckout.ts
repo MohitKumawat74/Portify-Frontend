@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { paymentService } from '@/services/paymentService';
 import type {
   RazorpayCheckoutSuccessResponse,
@@ -56,10 +56,31 @@ interface StartCheckoutParams {
   onDismiss?: () => void;
 }
 
+function isValidVerifyPayload(payload: RazorpayCheckoutSuccessResponse | null): payload is RazorpayCheckoutSuccessResponse {
+  if (!payload) return false;
+
+  const orderId = payload.razorpay_order_id?.trim();
+  const paymentId = payload.razorpay_payment_id?.trim();
+  const signature = payload.razorpay_signature?.trim();
+
+  return Boolean(orderId && paymentId && signature);
+}
+
+function normalizeCheckoutRequest(billingCycle?: 'monthly' | 'annual') {
+  return {
+    // Backend now validates planId strictly; lock it here to avoid accidental bad payloads.
+    planId: 'plan_pro' as const,
+    // Backend accepts monthly/month only.
+    billingCycle: billingCycle === 'annual' ? 'monthly' : (billingCycle ?? 'monthly'),
+  };
+}
+
 export function useRazorpayCheckout() {
   const [isCreatingOrder, setIsCreatingOrder] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
   const [pendingVerificationPayload, setPendingVerificationPayload] = useState<RazorpayCheckoutSuccessResponse | null>(null);
+  const checkoutInFlightRef = useRef(false);
+  const lastVerifiedPaymentIdRef = useRef<string | null>(null);
 
   const verifyPayload = useCallback(
     async (
@@ -68,13 +89,41 @@ export function useRazorpayCheckout() {
       onVerified?: () => Promise<void> | void,
       onVerificationFailed?: (error: unknown, retryPayload: RazorpayCheckoutSuccessResponse | null) => void,
     ) => {
+      if (!isValidVerifyPayload(payload)) {
+        const invalidError = new Error('Invalid payment verification payload from checkout.');
+        setPendingVerificationPayload(null);
+        onVerificationFailed?.(invalidError, null);
+        return;
+      }
+
+      if (lastVerifiedPaymentIdRef.current === payload.razorpay_payment_id) {
+        // Ignore repeated verification calls for the same payment id.
+        return;
+      }
+
       setIsVerifying(true);
       try {
         const verifyResponse = await paymentService.verifyPayment(payload, token);
-        if (!verifyResponse.data?.verified) {
+
+        // Backend may return different shapes:
+        // - ApiResponse<VerifyPaymentResponse> with data.verified === true
+        // - Top-level { success: true, message: '...' }
+        // - ApiResponse with data.success === true
+        const rawVerify = verifyResponse as unknown as Record<string, unknown>;
+        const dataField = (rawVerify?.data as Record<string, unknown> | undefined) ?? undefined;
+
+        const verified =
+          (dataField && dataField['verified'] === true) ||
+          rawVerify['success'] === true ||
+          (dataField && dataField['success'] === true) ||
+          (typeof rawVerify['message'] === 'string' && /verified/i.test(String(rawVerify['message']))) ||
+          (dataField && typeof dataField['message'] === 'string' && /verified/i.test(String(dataField['message'])));
+
+        if (!verified) {
           throw new Error('Payment verification failed.');
         }
 
+        lastVerifiedPaymentIdRef.current = payload.razorpay_payment_id;
         setPendingVerificationPayload(null);
         await onVerified?.();
       } catch (error) {
@@ -90,7 +139,6 @@ export function useRazorpayCheckout() {
   const startCheckout = useCallback(
     async ({
       token,
-      planId = 'plan_pro',
       billingCycle = 'monthly',
       prefill,
       notes,
@@ -99,6 +147,11 @@ export function useRazorpayCheckout() {
       onPaymentFailed,
       onDismiss,
     }: StartCheckoutParams) => {
+      if (checkoutInFlightRef.current) {
+        return;
+      }
+
+      checkoutInFlightRef.current = true;
       setIsCreatingOrder(true);
       try {
         await loadRazorpayScript();
@@ -107,24 +160,35 @@ export function useRazorpayCheckout() {
           throw new Error('Razorpay SDK is unavailable.');
         }
 
-        const orderResponse = await paymentService.createOrder({ planId, billingCycle }, token);
-        const order = orderResponse.data?.order;
+        const request = normalizeCheckoutRequest(billingCycle);
+        const orderResponse = await paymentService.createOrder(
+          {
+            ...request,
+            clientRequestId: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+          },
+          token,
+        );
+
+        // Backend may return either { data: { order } } (ApiResponse) or { order } directly.
+        const rawResponse = orderResponse as unknown as Record<string, unknown>;
+        const payload = (rawResponse?.data as Record<string, unknown> | undefined) ?? rawResponse;
+        const order = (payload?.order as Record<string, unknown> | undefined) ?? (rawResponse?.order as Record<string, unknown> | undefined);
 
         if (!order?.id) {
           throw new Error('Could not start checkout. Missing order details.');
         }
 
-        const key = process.env.NEXT_PUBLIC_RAZORPAY_KEY ?? orderResponse.data?.key;
+        const key = process.env.NEXT_PUBLIC_RAZORPAY_KEY ?? payload?.key ?? rawResponse?.key;
         if (!key) {
           throw new Error('Razorpay key is missing. Set NEXT_PUBLIC_RAZORPAY_KEY.');
         }
 
         const options: RazorpayCheckoutOptions = {
           key,
-          amount: orderResponse.data?.amount ?? order.amount,
-          currency: orderResponse.data?.currency ?? order.currency ?? 'INR',
-          name: orderResponse.data?.name ?? 'Portify',
-          description: orderResponse.data?.description ?? 'Upgrade to Pro Plan',
+          amount: payload?.amount ?? order.amount,
+          currency: payload?.currency ?? order.currency ?? 'INR',
+          name: payload?.name ?? 'Portify',
+          description: payload?.description ?? 'Upgrade to Pro Plan',
           order_id: order.id,
           prefill,
           notes,
@@ -144,8 +208,15 @@ export function useRazorpayCheckout() {
         });
 
         checkout.open();
+      } catch (error) {
+        // Surface backend duplicate/constraint failures with a clearer message.
+        if (error instanceof Error && /CONFLICT_ERROR|PaymentId already exists|E11000|duplicate key/i.test(error.message)) {
+          throw new Error('A previous payment attempt is still pending verification. Please complete verification or try again in a moment.');
+        }
+        throw error;
       } finally {
         setIsCreatingOrder(false);
+        checkoutInFlightRef.current = false;
       }
     },
     [verifyPayload],
@@ -164,6 +235,7 @@ export function useRazorpayCheckout() {
 
   const resetRetryState = useCallback(() => {
     setPendingVerificationPayload(null);
+    lastVerifiedPaymentIdRef.current = null;
   }, []);
 
   const isLoading = useMemo(() => isCreatingOrder || isVerifying, [isCreatingOrder, isVerifying]);

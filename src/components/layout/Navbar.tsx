@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Menu, X } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/Button';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Container } from './Container';
 import { APP_NAME, ROUTES } from '@/utils/constants';
 import { cn } from '@/utils/cn';
@@ -22,7 +23,14 @@ export function Navbar() {
   const { isAuthenticated, user, logout } = useAuth();
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [confirmLogoutOpen, setConfirmLogoutOpen] = useState(false);
   const pathname = usePathname();
+
+  const handleLogout = async () => {
+    await logout();
+    setMobileOpen(false);
+    setConfirmLogoutOpen(false);
+  };
 
   useEffect(() => {
     const onResize = () => {
@@ -102,7 +110,7 @@ export function Navbar() {
                 >
                   Dashboard
                 </Link>
-                <Button variant="outline" size="sm" onClick={logout}>
+                <Button variant="outline" size="sm" onClick={() => setConfirmLogoutOpen(true)}>
                   Logout
                 </Button>
               </>
@@ -175,7 +183,7 @@ export function Navbar() {
                       >
                         Dashboard
                       </Link>
-                      <Button variant="outline" size="sm" onClick={logout}>
+                      <Button variant="outline" size="sm" onClick={() => setConfirmLogoutOpen(true)}>
                         Logout
                       </Button>
                     </>
@@ -199,6 +207,16 @@ export function Navbar() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      <ConfirmDialog
+        isOpen={confirmLogoutOpen}
+        title="Log Out"
+        description="Are you sure you want to log out from your account?"
+        confirmLabel="Log Out"
+        tone="danger"
+        onConfirm={handleLogout}
+        onCancel={() => setConfirmLogoutOpen(false)}
+      />
     </motion.header>
   );
 }

@@ -1,14 +1,20 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Navbar } from '@/components/layout/Navbar';
 import { Footer } from '@/components/layout/Footer';
 import { Container } from '@/components/layout/Container';
 import Link from 'next/link';
 import { Button } from '@/components/ui/Button';
-import { ExternalLink } from 'lucide-react';
+import { Eye, Search, Lock, Crown } from 'lucide-react';
 import { ROUTES } from '@/utils/constants';
+import { templateService } from '@/services/templateService';
+import { toast } from '@/store/toastStore';
+import { useAuthStore } from '@/store/authStore';
+import type { Template } from '@/types';
+import { UpgradeModal } from '@/components/dashboard/UpgradeModal';
+import { isTemplateLockedForPlan } from '@/utils/plan';
 
 // ── CSS-art template previews ─────────────────────────────────────────────────
 function MockMinimal() {
@@ -67,71 +73,13 @@ function MockDeveloper() {
     </div>
   );
 }
-function MockAgency() {
-  return (
-    <div className="h-full bg-black p-3">
-      <div className="flex items-center justify-between mb-3 px-1">
-        <div className="h-2 w-16 rounded-full bg-white/70" />
-        <div className="flex gap-2">{[1,2,3].map(i => <div key={i} className="h-1.5 w-10 rounded-full bg-white/25" />)}</div>
-      </div>
-      <div className="relative h-24 rounded-xl overflow-hidden mb-2 bg-gradient-to-r from-amber-600 to-orange-600">
-        <div className="absolute inset-0 flex flex-col justify-center px-4">
-          <div className="h-3 w-32 rounded-full bg-white/90 mb-1.5" />
-          <div className="h-2 w-20 rounded-full bg-white/55" />
-        </div>
-      </div>
-      <div className="flex gap-2">
-        {[1,2,3,4,5].map(i => <div key={i} className="h-10 flex-1 rounded-lg bg-white/[0.06] border border-white/[0.08]" />)}
-      </div>
-    </div>
-  );
-}
-function MockPhotographer() {
-  return (
-    <div className="h-full bg-stone-950 p-2">
-      <div className="grid grid-cols-3 gap-1.5 h-full">
-        <div className="col-span-2 rounded-xl bg-gradient-to-br from-stone-700 to-stone-800 border border-white/[0.07] flex items-end p-2">
-          <div className="h-2 w-16 rounded-full bg-white/80" />
-        </div>
-        <div className="flex flex-col gap-1.5">
-          {['from-stone-600 to-stone-700','from-stone-700 to-stone-800','from-amber-900/50 to-stone-800'].map((g,i) => (
-            <div key={i} className={`flex-1 rounded-xl bg-gradient-to-br ${g} border border-white/[0.07]`} />
-          ))}
-        </div>
-        <div className="rounded-xl bg-gradient-to-br from-stone-800 to-stone-900 border border-white/[0.07]" />
-        <div className="col-span-2 rounded-xl bg-gradient-to-r from-stone-700 to-amber-900/40 border border-white/[0.07]" />
-      </div>
-    </div>
-  );
-}
-function MockSaaS() {
-  return (
-    <div className="h-full bg-slate-900 p-3">
-      <div className="flex items-center gap-2 mb-3">
-        <div className="w-5 h-5 rounded bg-gradient-to-br from-blue-500 to-cyan-500" />
-        <div className="h-1.5 w-16 rounded-full bg-white/40" />
-        <div className="ml-auto flex gap-1.5">{[1,2].map(i => <div key={i} className="h-5 w-12 rounded bg-white/10" />)}</div>
-      </div>
-      <div className="h-16 rounded-xl bg-gradient-to-r from-blue-600/20 to-cyan-600/20 border border-white/[0.07] mb-2 flex items-center px-3 gap-3">
-        <div className="space-y-1"><div className="h-2 w-20 rounded-full bg-white/70" /><div className="h-1.5 w-14 rounded-full bg-white/35" /></div>
-      </div>
-      <div className="grid grid-cols-3 gap-2">
-        {[1,2,3].map(i => <div key={i} className="h-12 rounded-xl bg-slate-800 border border-white/[0.06]" />)}
-      </div>
-    </div>
-  );
-}
 
-const ALL_TEMPLATES = [
-  { name: 'Minimal Pro', category: 'Minimal', tag: 'Popular', Mock: MockMinimal, colors: 'Violet & Slate' },
-  { name: 'Creative Portfolio', category: 'Creative', tag: 'New', Mock: MockCreative, colors: 'Violet & Cyan' },
-  { name: 'Developer Hub', category: 'Developer', tag: 'Featured', Mock: MockDeveloper, colors: 'Emerald & Cyan' },
-  { name: 'Agency Bold', category: 'Agency', tag: 'Premium', Mock: MockAgency, colors: 'Amber & Black' },
-  { name: 'Photographer', category: 'Photographer', tag: 'New', Mock: MockPhotographer, colors: 'Stone & Warm' },
-  { name: 'SaaS Founder', category: 'SaaS', tag: 'Popular', Mock: MockSaaS, colors: 'Blue & Cyan' },
-];
-
-const CATEGORIES = ['All', 'Minimal', 'Creative', 'Developer', 'Agency', 'Photographer', 'SaaS'];
+const MOCK_BY_KEY = {
+  template1: MockMinimal,
+  template2: MockCreative,
+  template3: MockDeveloper,
+  template4: MockDeveloper,
+} as const;
 
 const TAG_COLORS: Record<string, string> = {
   Popular: 'bg-[var(--color-primary)]/15 text-[var(--color-primary)] border-[var(--color-primary)]/30',
@@ -141,8 +89,68 @@ const TAG_COLORS: Record<string, string> = {
 };
 
 export default function TemplatesPage() {
+  const { isAuthenticated, planId } = useAuthStore();
+  const [templates, setTemplates] = useState<Template[]>([]);
+  const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState('All');
-  const filtered = selected === 'All' ? ALL_TEMPLATES : ALL_TEMPLATES.filter(t => t.category === selected);
+  const [search, setSearch] = useState('');
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
+
+  useEffect(() => {
+    templateService
+      .getAll(1, 100)
+      .then((res) => {
+        setTemplates((res.data ?? []).filter((t) => t.isActive));
+      })
+      .catch(() => {
+        toast.error('Failed to load templates.');
+      })
+      .finally(() => setLoading(false));
+  }, []);
+
+  const categories = useMemo(() => {
+    const unique = Array.from(new Set(templates.map((t) => (t.category || 'Other').trim()))).filter(Boolean);
+    return ['All', ...unique.map((c) => c.charAt(0).toUpperCase() + c.slice(1))];
+  }, [templates]);
+
+  const filtered = useMemo(() => {
+    const byCategory = selected === 'All'
+      ? templates
+      : templates.filter((t) => (t.category || '').toLowerCase() === selected.toLowerCase());
+
+    const query = search.trim().toLowerCase();
+    if (!query) return byCategory;
+    return byCategory.filter((t) =>
+      t.name.toLowerCase().includes(query) ||
+      t.description.toLowerCase().includes(query) ||
+      (t.category || '').toLowerCase().includes(query),
+    );
+  }, [templates, selected, search]);
+
+  function resolveTemplatePreviewKey(template: Template): 'template1' | 'template2' | 'template3' | 'template4' {
+    const id = template.id.toLowerCase();
+    const name = template.name.toLowerCase();
+    const category = (template.category || '').toLowerCase();
+
+    if (id === 'template1' || id === 'template2' || id === 'template3' || id === 'template4') {
+      return id;
+    }
+    if (/3d|immersive|interactive/.test(name) || /3d|immersive|interactive/.test(category)) {
+      return 'template4';
+    }
+    if (/creative|agency|photographer|saas/.test(name) || /creative|agency|photographer|saas/.test(category)) {
+      return 'template2';
+    }
+    if (/professional|classic|corporate/.test(name) || /professional|corporate/.test(category)) {
+      return 'template3';
+    }
+    return 'template1';
+  }
+
+  function getTag(template: Template): string {
+    if (template.isPremium) return 'Premium';
+    return 'Popular';
+  }
 
   return (
     <>
@@ -179,6 +187,19 @@ export default function TemplatesPage() {
               Every template is designed by professionals, works perfectly on all devices,
               and ships with multiple colour themes.
             </motion.p>
+
+            <div className="mx-auto max-w-md">
+              <div className="relative">
+                <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)]" />
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search templates..."
+                  className="w-full rounded-xl border border-white/10 bg-white/[0.03] py-2.5 pl-9 pr-3 text-sm text-white placeholder:text-[var(--color-text-muted)] outline-none focus:border-[var(--color-primary)]/60 focus:ring-2 focus:ring-[var(--color-primary)]/20"
+                />
+              </div>
+            </div>
           </Container>
         </section>
 
@@ -186,7 +207,7 @@ export default function TemplatesPage() {
         <div className="sticky top-16 z-40 border-b border-white/[0.06] bg-[var(--color-bg)]/90 backdrop-blur-xl sm:top-[70px]">
           <Container>
             <div className="flex gap-2 overflow-x-auto py-3 no-scrollbar">
-              {CATEGORIES.map((cat) => (
+              {categories.map((cat) => (
                 <button
                   key={cat}
                   onClick={() => setSelected(cat)}
@@ -222,47 +243,98 @@ export default function TemplatesPage() {
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.25 }}
               >
-                {filtered.map((t, i) => (
+                {loading
+                  ? Array.from({ length: 6 }).map((_, i) => (
+                    <div
+                      key={`loading-${i}`}
+                      className="h-[270px] animate-pulse rounded-2xl border border-white/[0.08] bg-white/[0.02]"
+                    />
+                  ))
+                  : filtered.map((t, i) => {
+                    const previewKey = resolveTemplatePreviewKey(t);
+                    const Mock = MOCK_BY_KEY[previewKey];
+                    const tag = getTag(t);
+                    const previewHref = `/preview/${previewKey}?source=${encodeURIComponent(t.id)}`;
+                    const isLocked = isTemplateLockedForPlan(t.id, t.isPremium, planId);
+                    const useHref = isAuthenticated
+                      ? `${ROUTES.CREATE_PORTFOLIO}?template=${encodeURIComponent(t.id)}`
+                      : ROUTES.LOGIN;
+
+                    return (
                   <motion.div
-                    key={t.name}
+                    key={t.id}
                     initial={{ opacity: 0, y: 40, scale: 0.97 }}
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     transition={{ duration: 0.5, delay: i * 0.08, ease: [0.22, 1, 0.36, 1] }}
-                    className="group overflow-hidden rounded-2xl border border-white/[0.08] bg-white/[0.02] transition-all duration-300 hover:-translate-y-2 hover:border-[var(--color-primary)]/40 hover:shadow-2xl hover:shadow-[var(--color-primary)]/12"
+                    className="group relative overflow-hidden rounded-2xl border border-white/[0.08] bg-white/[0.02] transition-all duration-300 hover:-translate-y-2 hover:border-[var(--color-primary)]/40 hover:shadow-2xl hover:shadow-[var(--color-primary)]/12"
                   >
+                    {isLocked ? (
+                      <button
+                        type="button"
+                        onClick={() => setUpgradeOpen(true)}
+                        className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 bg-black/45 backdrop-blur-[2px]"
+                        aria-label="Upgrade to unlock premium template"
+                      >
+                        <span className="rounded-full bg-amber-500/25 p-2.5 text-amber-300 shadow-[0_0_20px_rgba(245,158,11,0.25)]">
+                          <Lock size={16} />
+                        </span>
+                        <span className="rounded-full border border-amber-400/30 bg-amber-500/20 px-2.5 py-1 text-[10px] font-semibold text-amber-200">
+                          Unlock with Pro
+                        </span>
+                      </button>
+                    ) : null}
+
                     <div className="h-44 overflow-hidden border-b border-white/[0.06] sm:h-48">
-                      <t.Mock />
+                      {t.previewImage || t.thumbnail ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={t.previewImage || t.thumbnail} alt={`${t.name} preview`} className="h-full w-full object-cover" />
+                      ) : (
+                        <Mock />
+                      )}
                     </div>
                     <div className="p-4 sm:p-5">
                       <div className="mb-3 flex items-center justify-between">
                         <div>
                           <h3 className="text-sm font-semibold text-white sm:text-base">{t.name}</h3>
-                          <p className="text-xs text-[var(--color-text-muted)]">{t.category} · {t.colors}</p>
+                          <p className="text-xs text-[var(--color-text-muted)]">{(t.category || 'Template').charAt(0).toUpperCase() + (t.category || 'template').slice(1)}</p>
                         </div>
-                        <span className={`rounded-full border px-2.5 py-0.5 text-xs font-medium ${TAG_COLORS[t.tag] ?? 'bg-white/10 text-white/60'}`}>
-                          {t.tag}
+                        <span className={`rounded-full border px-2.5 py-0.5 text-xs font-medium ${TAG_COLORS[tag] ?? 'bg-white/10 text-white/60'}`}>
+                          {t.isPremium ? <span className="inline-flex items-center gap-1"><Crown size={11} /> Pro</span> : tag}
                         </span>
                       </div>
+                      <p className="mb-3 min-h-[36px] text-xs text-[var(--color-text-muted)] line-clamp-2">
+                        {t.description || 'A modern portfolio template with production-ready sections.'}
+                      </p>
                       <div className="flex gap-3">
-                        <Button variant="outline" size="sm" className="flex-1 text-xs">
-                          <ExternalLink className="mr-1.5 h-3.5 w-3.5" /> Preview
-                        </Button>
-                        <Link href={ROUTES.REGISTER} className="flex-1">
-                          <Button variant="glow" size="sm" className="w-full text-xs">Use this</Button>
+                        <Link href={previewHref} className="flex-1">
+                          <Button variant="outline" size="sm" className="w-full text-xs">
+                            <Eye className="mr-1.5 h-3.5 w-3.5" /> Preview
+                          </Button>
+                        </Link>
+                        <Link href={isLocked ? '#' : useHref} className="flex-1" onClick={(e) => {
+                          if (isLocked) {
+                            e.preventDefault();
+                            setUpgradeOpen(true);
+                          }
+                        }}>
+                          <Button variant="glow" size="sm" className="w-full text-xs" disabled={isLocked}>
+                            Use this
+                          </Button>
                         </Link>
                       </div>
                     </div>
                   </motion.div>
-                ))}
+                );
+                })}
 
                 {/* "More coming" placeholder cards — only show on All */}
-                {selected === 'All' && Array.from({ length: 3 }).map((_, i) => (
+                {!loading && selected === 'All' && filtered.length > 0 && Array.from({ length: 1 }).map((_, i) => (
                   <motion.div
                     key={`placeholder-${i}`}
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     transition={{ duration: 0.4, delay: (filtered.length + i) * 0.08 }}
-                    className="flex h-52 flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-white/10 bg-white/[0.01] text-center sm:h-64"
+                    className="flex h-full flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-white/10 bg-white/[0.01] text-center "
                   >
                     <div className="h-10 w-10 rounded-full border border-white/10 bg-white/[0.03] flex items-center justify-center">
                       <span className="text-lg text-white/20">+</span>
@@ -270,11 +342,19 @@ export default function TemplatesPage() {
                     <p className="text-xs text-white/25">More coming soon</p>
                   </motion.div>
                 ))}
+
+                {!loading && filtered.length === 0 && (
+                  <div className="col-span-full rounded-2xl border border-white/[0.08] bg-white/[0.02] p-8 text-center">
+                    <p className="text-sm font-medium text-white">No templates found</p>
+                    <p className="mt-1 text-xs text-[var(--color-text-muted)]">Try changing category or search keywords.</p>
+                  </div>
+                )}
               </motion.div>
             </AnimatePresence>
           </Container>
         </section>
       </main>
+      <UpgradeModal isOpen={upgradeOpen} onClose={() => setUpgradeOpen(false)} redirectOnSuccess={false} />
       <Footer />
     </>
   );

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useAuthStore } from '@/store/authStore';
 import { userService } from '@/services/userService';
 import { Button } from '@/components/ui/Button';
@@ -15,23 +16,26 @@ import {
   Search,
   Users,
   Trash2,
-  RefreshCw,
   ChevronLeft,
   ChevronRight,
   Pencil,
   AlertCircle,
+  Eye,
 } from 'lucide-react';
 
 const PAGE_SIZE = 10;
 
 export default function AdminUsersPage() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { token } = useAuthStore();
   const [users, setUsers] = useState<User[]>([]);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
   const [page, setPage] = useState(1);
-  const [search, setSearch] = useState('');
-  const [searchInput, setSearchInput] = useState('');
+  const [search, setSearch] = useState(searchParams.get('search')?.trim() ?? '');
+  const [searchInput, setSearchInput] = useState(searchParams.get('search')?.trim() ?? '');
   const [isLoading, setIsLoading] = useState(true);
 
   // Delete
@@ -43,15 +47,15 @@ export default function AdminUsersPage() {
   const [editName, setEditName] = useState('');
   const [saving, setSaving] = useState(false);
 
-  // Role toggle
-  const [togglingId, setTogglingId] = useState<string | null>(null);
+  // View user
+  const [viewTarget, setViewTarget] = useState<User | null>(null);
 
   const fetchUsers = useCallback(async () => {
     if (!token) return;
     setIsLoading(true);
     try {
-      const res = await userService.getAll(token, page, PAGE_SIZE, search || undefined);
-      setUsers(res.data);
+      const res = await userService.getAll(token, page, PAGE_SIZE, search || undefined, 'user');
+      setUsers(res.data.filter((u) => u.role !== 'admin'));
       setTotal(res.total);
       setTotalPages(res.totalPages);
     } catch (err) {
@@ -65,9 +69,19 @@ export default function AdminUsersPage() {
     fetchUsers();
   }, [fetchUsers]);
 
-  function handleSearchSubmit() {
-    setSearch(searchInput);
+  useEffect(() => {
+    const next = searchParams.get('search')?.trim() ?? '';
+    setSearchInput(next);
+    setSearch(next);
     setPage(1);
+  }, [searchParams]);
+
+  function handleSearchSubmit() {
+    const next = searchInput.trim();
+    setSearch(next);
+    setPage(1);
+    const query = next ? `?search=${encodeURIComponent(next)}` : '';
+    router.replace(`${pathname}${query}`);
   }
 
   async function handleDelete() {
@@ -82,21 +96,6 @@ export default function AdminUsersPage() {
       toast.error(err instanceof Error ? err.message : 'Failed to delete user.');
     } finally {
       setDeleting(false);
-    }
-  }
-
-  async function handleToggleRole(user: User) {
-    if (!token) return;
-    setTogglingId(user.id);
-    const newRole: User['role'] = user.role === 'admin' ? 'user' : 'admin';
-    try {
-      await userService.updateRole(user.id, newRole, token);
-      setUsers((prev) => prev.map((u) => (u.id === user.id ? { ...u, role: newRole } : u)));
-      toast.success(`${user.name} is now ${newRole === 'admin' ? 'an Admin' : 'a User'}.`);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to change role.');
-    } finally {
-      setTogglingId(null);
     }
   }
 
@@ -115,8 +114,6 @@ export default function AdminUsersPage() {
     }
   }
 
-  const adminCount = users.filter((u) => u.role === 'admin').length;
-
   return (
     <div className="space-y-6">
       <PageHeader
@@ -124,7 +121,7 @@ export default function AdminUsersPage() {
         subtitle={`${total} registered users total`}
         actions={
           <div className="flex items-center gap-1.5 text-xs text-[var(--color-text-muted)]">
-            <Users size={13} /> {total} total · {adminCount} admins on this page
+            <Users size={13} /> {total} total · {users.length} users on this page
           </div>
         }
       />
@@ -144,7 +141,7 @@ export default function AdminUsersPage() {
         </div>
         <Button size="sm" onClick={handleSearchSubmit}>Search</Button>
         {search && (
-          <Button size="sm" variant="ghost" onClick={() => { setSearch(''); setSearchInput(''); setPage(1); }}>
+          <Button size="sm" variant="ghost" onClick={() => { setSearch(''); setSearchInput(''); setPage(1); router.replace(pathname); }}>
             Clear
           </Button>
         )}
@@ -219,12 +216,11 @@ export default function AdminUsersPage() {
                           size="sm"
                           variant="ghost"
                           className="gap-1 text-xs"
-                          isLoading={togglingId === u.id}
-                          onClick={() => handleToggleRole(u)}
-                          title="Toggle role"
+                          onClick={() => setViewTarget(u)}
+                          title="View user"
                         >
-                          <RefreshCw size={11} />
-                          {u.role === 'admin' ? 'Demote' : 'Promote'}
+                          <Eye size={11} />
+                          View
                         </Button>
                         <Button
                           size="sm"
@@ -306,6 +302,29 @@ export default function AdminUsersPage() {
           </div>
         </div>
       </Modal>
+
+      {/* View user modal */}
+      <Modal isOpen={!!viewTarget} onClose={() => setViewTarget(null)} title="User Details">
+        <div className="space-y-3">
+          <Info label="Name" value={viewTarget?.name ?? '-'} />
+          <Info label="Email" value={viewTarget?.email ?? '-'} />
+          <Info label="Role" value={viewTarget?.role ?? '-'} />
+          <Info label="Joined" value={viewTarget ? formatDate(viewTarget.createdAt) : '-'} />
+          <Info label="Plan" value={viewTarget?.subscription?.planName ?? 'Free'} />
+          <div className="pt-1">
+            <Button variant="ghost" onClick={() => setViewTarget(null)}>Close</Button>
+          </div>
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
+function Info({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2.5">
+      <p className="text-[11px] text-[var(--color-text-muted)]">{label}</p>
+      <p className="text-sm font-medium text-[var(--color-text)]">{value}</p>
     </div>
   );
 }

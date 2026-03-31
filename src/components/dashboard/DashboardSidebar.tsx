@@ -9,6 +9,7 @@ import {
   LayoutDashboard,
   FolderOpen,
   PlusSquare,
+  WandSparkles,
   Layout,
   Settings,
   LogOut,
@@ -17,7 +18,6 @@ import {
   Users,
   Palette,
   BarChart3,
-  ShieldCheck,
   ChevronRight,
   LineChart,
   CreditCard,
@@ -25,6 +25,7 @@ import {
 import { cn } from '@/utils/cn';
 import { APP_NAME, ROUTES } from '@/utils/constants';
 import { useAuth } from '@/hooks/useAuth';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 
 export interface NavItem {
   label: string;
@@ -40,6 +41,17 @@ interface DashboardSidebarProps {
   variant?: 'user' | 'admin';
 }
 
+interface SidebarContentProps {
+  navItems: NavItem[];
+  title?: string;
+  userName?: string;
+  userEmail?: string;
+  initials: string;
+  isActive: (href: string) => boolean;
+  onNavClick: () => void;
+  onLogoutClick: () => void;
+}
+
 export const USER_NAV: NavItem[] = [
   { label: 'Overview',        href: ROUTES.DASHBOARD,         icon: <LayoutDashboard size={18} /> },
   { label: 'My Portfolios',   href: ROUTES.PORTFOLIOS,        icon: <FolderOpen size={18} /> },
@@ -53,28 +65,26 @@ export const USER_NAV: NavItem[] = [
 export const ADMIN_NAV: NavItem[] = [
   { label: 'Dashboard',   href: ROUTES.ADMIN,             icon: <LayoutDashboard size={18} /> },
   { label: 'Users',       href: ROUTES.ADMIN_USERS,       icon: <Users size={18} /> },
+  { label: 'Plans',       href: ROUTES.ADMIN_PLANS,       icon: <CreditCard size={18} /> },
   { label: 'Portfolios',  href: ROUTES.ADMIN_PORTFOLIOS,  icon: <FolderOpen size={18} /> },
   { label: 'Templates',   href: ROUTES.ADMIN_TEMPLATES,   icon: <Layout size={18} /> },
+  { label: 'Template Builder', href: ROUTES.ADMIN_TEMPLATE_BUILDER, icon: <WandSparkles size={18} /> },
   { label: 'Themes',      href: ROUTES.ADMIN_THEMES,      icon: <Palette size={18} /> },
   { label: 'Analytics',   href: ROUTES.ADMIN_ANALYTICS,   icon: <BarChart3 size={18} /> },
+  { label: 'Settings',    href: ROUTES.ADMIN_SETTINGS,    icon: <Settings size={18} /> },
 ];
 
-export function DashboardSidebar({ navItems: navItemsProp, title, variant = 'user' }: DashboardSidebarProps) {
-  // Resolve nav list here (inside the client component) so no JSX/function values
-  // are ever serialized across the server → client RSC boundary.
-  const navItems = navItemsProp ?? (variant === 'admin' ? ADMIN_NAV : USER_NAV);
-  const pathname = usePathname();
-  const { user, logout } = useAuth();
-  const [mobileOpen, setMobileOpen] = useState(false);
-
-  const isActive = (href: string) =>
-    pathname === href || (href !== ROUTES.DASHBOARD && href !== ROUTES.ADMIN && pathname.startsWith(href + '/'));
-
-  const initials = user?.name
-    ? user.name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2)
-    : 'U';
-
-  const SidebarContent = () => (
+function SidebarContent({
+  navItems,
+  title,
+  userName,
+  userEmail,
+  initials,
+  isActive,
+  onNavClick,
+  onLogoutClick,
+}: SidebarContentProps) {
+  return (
     <div className="flex h-full flex-col">
       {/* ── Brand ─────────────────────────────────────── */}
       <div className="flex h-16 shrink-0 items-center gap-3 border-b border-[var(--color-border)] px-5">
@@ -84,7 +94,6 @@ export function DashboardSidebar({ navItems: navItemsProp, title, variant = 'use
         <span className="gradient-text text-base font-bold truncate">
           {title ?? APP_NAME}
         </span>
-      
       </div>
 
       {/* ── Nav items ─────────────────────────────────── */}
@@ -95,7 +104,7 @@ export function DashboardSidebar({ navItems: navItemsProp, title, variant = 'use
             <Link
               key={item.href}
               href={item.href}
-              onClick={() => setMobileOpen(false)}
+              onClick={onNavClick}
               className={cn(
                 'group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200',
                 active
@@ -128,11 +137,11 @@ export function DashboardSidebar({ navItems: navItemsProp, title, variant = 'use
             {initials}
           </div>
           <div className="min-w-0 flex-1">
-            <p className="truncate text-xs font-semibold text-[var(--color-text)]">{user?.name ?? 'User'}</p>
-            <p className="truncate text-[10px] text-[var(--color-text-muted)]">{user?.email ?? ''}</p>
+            <p className="truncate text-xs font-semibold text-[var(--color-text)]">{userName ?? 'User'}</p>
+            <p className="truncate text-[10px] text-[var(--color-text-muted)]">{userEmail ?? ''}</p>
           </div>
           <button
-            onClick={logout}
+            onClick={onLogoutClick}
             title="Sign out"
             className="shrink-0 rounded-lg p-1.5 text-[var(--color-text-muted)] transition-colors hover:bg-red-500/10 hover:text-red-400"
           >
@@ -142,6 +151,34 @@ export function DashboardSidebar({ navItems: navItemsProp, title, variant = 'use
       </div>
     </div>
   );
+}
+
+export function DashboardSidebar({ navItems: navItemsProp, title, variant = 'user' }: DashboardSidebarProps) {
+  // Resolve nav list here (inside the client component) so no JSX/function values
+  // are ever serialized across the server → client RSC boundary.
+  const navItems = navItemsProp ?? (variant === 'admin' ? ADMIN_NAV : USER_NAV);
+  const pathname = usePathname();
+  const { user, logout } = useAuth();
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [confirmLogoutOpen, setConfirmLogoutOpen] = useState(false);
+
+  const handleLogout = async () => {
+    await logout();
+    setConfirmLogoutOpen(false);
+  };
+
+  const isActive = (href: string) => {
+    if (pathname === href) return true;
+    // If there's a more specific nav item that exactly matches the current pathname,
+    // prefer that one instead of marking the parent as active.
+    const hasExactNav = navItems.some((n) => n.href === pathname);
+    if (hasExactNav) return false;
+    return href !== ROUTES.DASHBOARD && href !== ROUTES.ADMIN && pathname.startsWith(href + '/');
+  };
+
+  const initials = user?.name
+    ? user.name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2)
+    : 'U';
 
   return (
     <>
@@ -192,15 +229,43 @@ export function DashboardSidebar({ navItems: navItemsProp, title, variant = 'use
             >
               <X size={18} />
             </button>
-            <SidebarContent />
+            <SidebarContent
+              navItems={navItems}
+              title={title}
+              userName={user?.name}
+              userEmail={user?.email}
+              initials={initials}
+              isActive={isActive}
+              onNavClick={() => setMobileOpen(false)}
+              onLogoutClick={() => setConfirmLogoutOpen(true)}
+            />
           </motion.aside>
         )}
       </AnimatePresence>
 
       {/* ── Desktop static sidebar ────────────────────── */}
       <aside className="hidden lg:flex lg:w-64 lg:shrink-0 lg:flex-col border-r border-[var(--color-border)] bg-[var(--color-bg)]">
-        <SidebarContent />
+        <SidebarContent
+          navItems={navItems}
+          title={title}
+          userName={user?.name}
+          userEmail={user?.email}
+          initials={initials}
+          isActive={isActive}
+          onNavClick={() => setMobileOpen(false)}
+          onLogoutClick={() => setConfirmLogoutOpen(true)}
+        />
       </aside>
+
+      <ConfirmDialog
+        isOpen={confirmLogoutOpen}
+        title="Log Out"
+        description="Are you sure you want to log out from your account?"
+        confirmLabel="Log Out"
+        tone="danger"
+        onConfirm={handleLogout}
+        onCancel={() => setConfirmLogoutOpen(false)}
+      />
     </>
   );
 }

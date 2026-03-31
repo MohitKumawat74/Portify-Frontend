@@ -71,7 +71,9 @@ export type SectionType =
   | 'skills'
   | 'projects'
   | 'experience'
-  | 'contact';
+  | 'testimonials'
+  | 'contact'
+  | 'footer';
 
 export interface PortfolioSection {
   id: string;
@@ -80,15 +82,42 @@ export interface PortfolioSection {
   order: number;
 }
 
+export interface PortfolioMetadata {
+  source?: string;
+  renderMode?: string;
+  generatedAt?: string;
+  [key: string]: unknown;
+}
+
+export interface PortfolioDiagnostics {
+  missingSections?: SectionType[];
+  fallbackApplied?: boolean;
+  warnings?: string[];
+  invalidSections?: string[];
+  [key: string]: unknown;
+}
+
 export interface Portfolio {
   id: string;
   userId: string;
+  username?: string;
   title: string;
   slug: string;
   templateId: string;
+  templateName?: string;
+  templatePreviewImage?: string;
   theme: Theme;
   sections: PortfolioSection[];
   isPublished: boolean;
+  views?: number;
+  uniqueVisitors?: number;
+  projectClicks?: number;
+  metaTitle?: string;
+  metaDescription?: string;
+  metadata?: PortfolioMetadata;
+  diagnostics?: PortfolioDiagnostics;
+  customizations?: Record<string, unknown>;
+  templateSlug?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -98,10 +127,43 @@ export interface Template {
   name: string;
   description: string;
   thumbnail: string;
+  previewImage?: string;
   category: string;
   isPremium: boolean;
   isActive: boolean;
   createdAt: string;
+  updatedAt?: string;
+  defaultTheme?: Theme;
+  sections?: SectionType[];
+  builderConfig?: {
+    sections?: Array<{
+      id: string;
+      type: SectionType;
+      order: number;
+      data: Record<string, unknown>;
+      animation?: {
+        type?: 'fade' | 'slide' | 'zoom';
+        duration?: number;
+        delay?: number;
+        trigger?: 'viewport' | 'load' | 'hover';
+      };
+    }>;
+    style?: {
+      layoutStyle?: 'minimal' | 'split' | 'modern' | 'immersive';
+      colors?: {
+        primaryColor?: string;
+        secondaryColor?: string;
+        backgroundColor?: string;
+        textColor?: string;
+        accentColor?: string;
+      };
+      typography?: {
+        fontFamily?: string;
+        headingFont?: string;
+        baseFontSize?: string;
+      };
+    };
+  };
 }
 
 export interface Analytics {
@@ -143,6 +205,7 @@ export interface Plan {
   features: string[];
   isPopular: boolean;
   isActive: boolean;
+  interval?: string;
 }
 
 export interface Subscription {

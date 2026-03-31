@@ -1,10 +1,15 @@
 'use client';
 
-import { useState, useRef, useEffect, type ReactNode } from 'react';
+import { useState, useRef, useEffect, type ReactNode, type FormEvent } from 'react';
 import Link from 'next/link';
+import { usePathname, useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, Bell, ChevronDown, User, Settings, LogOut, ExternalLink } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
+import { useAuthStore } from '@/store/authStore';
+import { userService } from '@/services/userService';
+import { templateService } from '@/services/templateService';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { ROUTES } from '@/utils/constants';
 import { cn } from '@/utils/cn';
 
@@ -14,11 +19,109 @@ interface TopNavbarProps {
   actions?: ReactNode;
 }
 
+type SearchSuggestion = {
+  id: string;
+  label: string;
+  subLabel?: string;
+  type: 'user' | 'template';
+  href: string;
+  badge?: string;
+};
+
 export function TopNavbar({ title, subtitle, actions }: TopNavbarProps) {
+  const router = useRouter();
+  const pathname = usePathname();
   const { user, logout } = useAuth();
+  const { token } = useAuthStore();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [searchFocused, setSearchFocused] = useState(false);
+  const [searchInput, setSearchInput] = useState('');
+  const [confirmLogoutOpen, setConfirmLogoutOpen] = useState(false);
+  const [searchResults, setSearchResults] = useState<SearchSuggestion[]>([]);
+  const searchDebounceRef = useRef<number | null>(null);
+  const blurTimeoutRef = useRef<number | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  const isAdmin = pathname.startsWith('/admin');
+
+  function resolveAdminSearchRoute(query: string): string {
+    const q = query.toLowerCase();
+    if (/dashboard|overview|home/.test(q)) return ROUTES.ADMIN;
+    if (/user|member|account/.test(q)) return `${ROUTES.ADMIN_USERS}?search=${encodeURIComponent(query)}`;
+    if (/plan|billing|price|subscription/.test(q)) return ROUTES.ADMIN_PLANS;
+    if (/portfolio|site/.test(q)) return ROUTES.ADMIN_PORTFOLIOS;
+    if (/template|layout/.test(q)) return ROUTES.ADMIN_TEMPLATES;
+    if (/theme|color|font/.test(q)) return ROUTES.ADMIN_THEMES;
+    if (/analytics|report|metric|stats/.test(q)) return ROUTES.ADMIN_ANALYTICS;
+    if (/setting|profile|admin/.test(q)) return ROUTES.ADMIN_SETTINGS;
+    return `${ROUTES.ADMIN_USERS}?search=${encodeURIComponent(query)}`;
+  }
+
+  function handleSearchSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const query = searchInput.trim();
+    if (!query || !isAdmin) return;
+    router.push(resolveAdminSearchRoute(query));
+  }
+
+  useEffect(() => {
+    // Live admin search suggestions for users + templates.
+    if (!isAdmin || !token) return;
+
+    const q = searchInput.trim();
+    if (searchDebounceRef.current) {
+      window.clearTimeout(searchDebounceRef.current);
+      searchDebounceRef.current = null;
+    }
+
+    if (q.length < 2) {
+      return;
+    }
+
+    // debounce
+    searchDebounceRef.current = window.setTimeout(async () => {
+      try {
+        const [usersRes, templatesRes] = await Promise.all([
+          userService.getAll(token, 1, 5, q),
+          templateService.search(q, 5),
+        ]);
+
+        const userSuggestions: SearchSuggestion[] = usersRes.data
+          .filter((u) => u.role !== 'admin')
+          .map((u) => ({
+            id: `user-${u.id}`,
+            label: u.name,
+            subLabel: u.email,
+            type: 'user',
+            href: `${ROUTES.ADMIN_USERS}?search=${encodeURIComponent(u.email || u.name)}`,
+            badge: 'User',
+          }));
+
+        const templateSuggestions: SearchSuggestion[] = templatesRes.map((t) => ({
+          id: `template-${t.id}`,
+          label: t.name,
+          subLabel: t.description,
+          type: 'template',
+          href: `${ROUTES.ADMIN_TEMPLATES}?search=${encodeURIComponent(t.name)}`,
+          badge: t.isPremium ? 'Premium' : 'Template',
+        }));
+
+        setSearchResults([...userSuggestions, ...templateSuggestions].slice(0, 8));
+      } catch {
+        setSearchResults([]);
+      }
+    }, 260);
+
+    return () => {
+      if (searchDebounceRef.current) window.clearTimeout(searchDebounceRef.current);
+    };
+  }, [isAdmin, searchInput, token]);
+
+  const handleLogout = async () => {
+    setDropdownOpen(false);
+    await logout();
+    setConfirmLogoutOpen(false);
+  };
 
   const initials = user?.name
     ? user.name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2)
@@ -45,21 +148,64 @@ export function TopNavbar({ title, subtitle, actions }: TopNavbarProps) {
       <div className="flex-1" />
 
       {/* ── Search bar ─────────────────────────────────── */}
-      <div className={cn(
-        'hidden relative sm:flex items-center rounded-xl border bg-[var(--color-bg-card)] px-3 py-2 transition-all duration-200',
-        searchFocused
-          ? 'border-[var(--color-primary)]/60 shadow-[0_0_0_3px_rgba(124,58,237,0.12)] w-56'
-          : 'border-[var(--color-border)] w-44',
-      )}>
+      <form
+        onSubmit={handleSearchSubmit}
+        className={cn(
+          'hidden relative sm:flex items-center rounded-xl border bg-[var(--color-bg-card)] px-3 py-2 transition-all duration-200',
+          searchFocused
+            ? 'border-[var(--color-primary)]/60 shadow-[0_0_0_3px_rgba(124,58,237,0.12)] w-56'
+            : 'border-[var(--color-border)] w-44',
+        )}
+      >
         <Search size={14} className="shrink-0 text-[var(--color-text-muted)]" />
         <input
           type="text"
-          placeholder="Search…"
+          placeholder={isAdmin ? 'Search admin…' : 'Search…'}
+          value={searchInput}
+          onChange={(e) => {
+            const next = e.target.value;
+            setSearchInput(next);
+            if (next.trim().length < 2) {
+              setSearchResults([]);
+            }
+          }}
           onFocus={() => setSearchFocused(true)}
-          onBlur={() => setSearchFocused(false)}
+          onBlur={() => {
+            if (blurTimeoutRef.current) window.clearTimeout(blurTimeoutRef.current);
+            blurTimeoutRef.current = window.setTimeout(() => setSearchFocused(false), 140);
+          }}
           className="ml-2 w-full bg-transparent text-xs text-[var(--color-text)] placeholder:text-[var(--color-text-muted)] outline-none"
         />
-      </div>
+        {/* Admin suggestions dropdown */}
+        {isAdmin && searchResults.length > 0 && searchFocused && (
+          <div className="absolute left-0 top-full z-50 mt-2 w-80 max-h-64 overflow-auto rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-card)] p-2 shadow-[0_16px_48px_rgba(0,0,0,0.4)]">
+            {searchResults.map((t) => (
+              <Link
+                key={t.id}
+                href={t.href}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  setSearchInput('');
+                  setSearchFocused(false);
+                  setSearchResults([]);
+                }}
+                className="flex items-start gap-3 rounded-lg px-3 py-2 hover:bg-white/5"
+              >
+                <div className="flex-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-sm font-medium text-[var(--color-text)] truncate">{t.label}</div>
+                    {t.badge && <div className="text-[10px] rounded px-2 py-0.5 bg-white/10 text-[var(--color-text)]">{t.badge}</div>}
+                  </div>
+                  {t.subLabel && <div className="mt-1 text-xs text-[var(--color-text-muted)] truncate">{t.subLabel}</div>}
+                </div>
+              </Link>
+            ))}
+            <div className="mt-2 border-t border-[var(--color-border)] pt-2">
+              <Link href={`${ROUTES.ADMIN_TEMPLATES}?search=${encodeURIComponent(searchInput)}`} className="block text-xs text-[var(--color-primary)]">View all results</Link>
+            </div>
+          </div>
+        )}
+      </form>
 
       {/* ── Extra actions slot ─────────────────────────── */}
       {actions && <div className="hidden sm:flex items-center gap-2">{actions}</div>}
@@ -104,10 +250,10 @@ export function TopNavbar({ title, subtitle, actions }: TopNavbarProps) {
               </div>
 
               <div className="py-1">
-                <DropdownItem icon={<User size={14} />} href={ROUTES.SETTINGS} onClick={() => setDropdownOpen(false)}>
+                <DropdownItem icon={<User size={14} />} href={isAdmin ? ROUTES.ADMIN_SETTINGS : ROUTES.SETTINGS} onClick={() => setDropdownOpen(false)}>
                   Profile Settings
                 </DropdownItem>
-                <DropdownItem icon={<Settings size={14} />} href={ROUTES.SETTINGS} onClick={() => setDropdownOpen(false)}>
+                <DropdownItem icon={<Settings size={14} />} href={isAdmin ? ROUTES.ADMIN_SETTINGS : ROUTES.SETTINGS} onClick={() => setDropdownOpen(false)}>
                   Account Settings
                 </DropdownItem>
                 <DropdownItem icon={<ExternalLink size={14} />} href={ROUTES.HOME} onClick={() => setDropdownOpen(false)}>
@@ -117,7 +263,7 @@ export function TopNavbar({ title, subtitle, actions }: TopNavbarProps) {
 
               <div className="border-t border-[var(--color-border)] py-1">
                 <button
-                  onClick={() => { setDropdownOpen(false); logout(); }}
+                  onClick={() => setConfirmLogoutOpen(true)}
                   className="flex w-full items-center gap-3 px-4 py-2 text-xs text-red-400 transition-colors hover:bg-red-500/10"
                 >
                   <LogOut size={14} />
@@ -128,6 +274,16 @@ export function TopNavbar({ title, subtitle, actions }: TopNavbarProps) {
           )}
         </AnimatePresence>
       </div>
+
+      <ConfirmDialog
+        isOpen={confirmLogoutOpen}
+        title="Log Out"
+        description="Are you sure you want to log out from your account?"
+        confirmLabel="Log Out"
+        tone="danger"
+        onConfirm={handleLogout}
+        onCancel={() => setConfirmLogoutOpen(false)}
+      />
     </header>
   );
 }

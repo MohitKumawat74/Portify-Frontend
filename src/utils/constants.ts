@@ -34,7 +34,7 @@ export const DEFAULT_THEME = {
   fontFamily: 'Inter, sans-serif',
 } as const;
 
-export const TEMPLATE_IDS = ['template1', 'template2', 'template3'] as const;
+export const TEMPLATE_IDS = ['template1', 'template2', 'template3', 'template4'] as const;
 export type TemplateId = (typeof TEMPLATE_IDS)[number];
 
 export const ROUTES = {
@@ -44,6 +44,7 @@ export const ROUTES = {
   DASHBOARD: '/dashboard',
   PORTFOLIOS: '/dashboard/portfolios',
   CREATE_PORTFOLIO: '/dashboard/portfolios/create',
+  PORTFOLIO_BUILDER: '/dashboard/portfolios/builder',
   TEMPLATES: '/dashboard/templates',
   ANALYTICS: '/dashboard/analytics',
   ACCOUNT: '/dashboard/account',
@@ -51,9 +52,12 @@ export const ROUTES = {
   ADMIN: '/admin',
   ADMIN_USERS: '/admin/users',
   ADMIN_TEMPLATES: '/admin/templates',
+  ADMIN_TEMPLATE_BUILDER: '/admin/templates/builder',
   ADMIN_THEMES: '/admin/themes',
   ADMIN_ANALYTICS: '/admin/analytics',
   ADMIN_PORTFOLIOS: '/admin/portfolios',
+  ADMIN_PLANS: '/admin/plans',
+  ADMIN_SETTINGS: '/admin/settings',
   // Public marketing pages
   FEATURES_PAGE: '/features',
   TEMPLATES_PAGE: '/templates',
